@@ -31,8 +31,8 @@ body{font-family:'Hiragino Kaku Gothic ProN','Noto Sans JP',sans-serif;backgroun
 
 /* Nav */
 .nav{background:#fff;display:flex;border-bottom:2px solid var(--border);position:sticky;top:56px;z-index:99}
-.nav button{flex:1;padding:10px 2px;border:none;background:none;font-size:11px;color:var(--gray);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;font-family:inherit;transition:color .15s}
-.nav button svg{width:18px;height:18px}
+.nav button{flex:1;padding:8px 1px;border:none;background:none;font-size:10px;color:var(--gray);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:2px;font-family:inherit;transition:color .15s}
+.nav button svg{width:17px;height:17px}
 .nav button.active{color:var(--blue);border-bottom:2.5px solid var(--blue);margin-bottom:-2px}
 
 /* Pages */
@@ -272,6 +272,10 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
   <button onclick="showPage('suppliers')" id="nav-suppliers">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
     発注先
+  </button>
+  <button onclick="openInoue()" id="nav-inoue">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    井上ブラシ
   </button>
 </div>
 
@@ -630,15 +634,19 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
 <div class="toast" id="toast"></div>
 
 <script>
-// Firebase SDKをオプショナルで読み込む
+// Firebase SDKをオプショナルで読み込む（失敗してもアプリは動く）
 (function(){
   function loadScript(src, cb) {
     var s = document.createElement('script');
     s.src = src;
-    s.onload = cb;
-    s.onerror = function(){ console.warn('Firebase SDK読み込み失敗（オフラインモードで動作）'); cb && cb(); };
+    s.onload = function(){ if(cb) cb(); };
+    s.onerror = function(){
+      // オフライン時は無視（ローカルストレージで動作継続）
+      if(cb) cb();
+    };
     document.head.appendChild(s);
   }
+  // CDNから読み込み（ネット接続時のみ有効）
   loadScript('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js', function(){
     loadScript('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js', null);
   });
@@ -1586,21 +1594,51 @@ function deleteSupplierFormat() {
 
 function checkSupplierFormat(supplierName) {
   const alertEl = document.getElementById('supplier-format-alert');
+
+  // 井上ブラシ：専用画面へ自動移行
+  if (supplierName && supplierName.includes('井上ブラシ')) {
+    alertEl.style.cssText = 'display:block;background:#e8f2fb;border:1.5px solid #1a6baf;border-radius:8px;padding:10px 13px;margin-bottom:10px';
+    alertEl.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">' +
+        '<div>' +
+          '<div style="font-weight:700;font-size:13px;color:#1a6baf">📋 井上ブラシ 専用発注書</div>' +
+          '<div style="font-size:11px;color:#555;margin-top:3px">専用フォーマットへ移動します...</div>' +
+        '</div>' +
+        '<button onclick="openInoue()" style="flex-shrink:0;background:#1a6baf;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">' +
+          '📄 専用画面を開く' +
+        '</button>' +
+      '</div>';
+
+    // 0.8秒後に自動で開く
+    clearTimeout(window._inoueTimer);
+    window._inoueTimer = setTimeout(function() {
+      const cur = document.getElementById('order-supplier').value;
+      if (cur && cur.includes('井上ブラシ')) {
+        openInoue();
+        document.getElementById('order-supplier').value = '';
+        alertEl.style.display = 'none';
+      }
+    }, 800);
+    return;
+  }
+
+  // その他の発注先：専用フォーマット設定がある場合
   const s = appData.suppliers.find(x => x.name === supplierName);
   if (s && s.format && s.format.name) {
-    alertEl.style.display = 'block';
-    alertEl.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-        <div>
-          ⚠ <strong>${escHtml(s.format.name)}</strong> を使用してください<br>
-          ${s.format.memo ? `<div style="margin-top:4px;color:#5c4a00;font-size:11px">${escHtml(s.format.memo)}</div>` : ''}
-          ${s.format.path ? `<div style="margin-top:3px;font-size:11px;color:#7c4a00">📁 ${escHtml(s.format.path)}</div>` : ''}
-        </div>
-        <button onclick="openFormatToolByName('${supplierName}')"
-          style="flex-shrink:0;background:#d97706;color:#fff;border:none;border-radius:7px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">
-          📄 専用フォーマットで開く
-        </button>
-      </div>`;
+    alertEl.style.cssText = 'display:block;background:#fff3cd;border:1px solid #f0c040;border-radius:8px;padding:10px 13px;margin-bottom:10px';
+    const memo = s.format.memo ? '<div style="margin-top:4px;color:#5c4a00;font-size:11px">' + escHtml(s.format.memo) + '</div>' : '';
+    const path = s.format.path ? '<div style="margin-top:3px;font-size:11px;color:#7c4a00">📁 ' + escHtml(s.format.path) + '</div>' : '';
+    // ボタンはdataset経由でsupplierNameを渡す（クォートの混在を避ける）
+    alertEl.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">' +
+        '<div>⚠ <strong>' + escHtml(s.format.name) + '</strong> を使用してください<br>' + memo + path + '</div>' +
+        '<button id="format-open-btn" style="flex-shrink:0;background:#d97706;color:#fff;border:none;border-radius:7px;padding:7px 11px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">📄 専用フォーマットで開く</button>' +
+      '</div>';
+    // イベントリスナーでsupplierNameを安全に渡す
+    setTimeout(function() {
+      const btn = document.getElementById('format-open-btn');
+      if (btn) btn.onclick = function() { openFormatToolByName(supplierName); };
+    }, 0);
   } else {
     alertEl.style.display = 'none';
   }
@@ -1615,7 +1653,7 @@ function openFormatTool(supplierId) {
   const s = appData.suppliers.find(x => x.id === supplierId);
   if (!s) return;
   // torihikisaki_format.html を同じフォルダから開く
-  const url = 'https://watanaben53-cmd.github.io/hacchu-kanri/torihikisaki_format.html';
+  const url = 'https://watanaben53-cmd.github.io/hacchu-kanri/torihikisaki_format.html'; // 汎用フォーマット
   const win = window.open(url, '_blank');
   if (!win) {
     showToast('ポップアップがブロックされました。ブラウザの設定でポップアップを許可してください');
@@ -1702,6 +1740,11 @@ function openPasscode() {
 }
 function closePasscode() {
   document.getElementById('passcode-overlay').classList.remove('open');
+}
+
+function openInoue() {
+  const win = window.open('https://watanaben53-cmd.github.io/hacchu-kanri/inoue_brush.html', '_blank');
+  if (!win) window.location.href = 'https://watanaben53-cmd.github.io/hacchu-kanri/inoue_brush.html';
 }
 
 function disconnectSync() {
