@@ -83,7 +83,7 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
 /* ===== カテゴリ検索画面 ===== */
 .cat-search-header{text-align:center;padding:10px 0 14px;font-size:13px;color:var(--gray)}
 .cat-grid-main{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
-.cat-main-btn{background:#fff;border:2px solid var(--blue);border-radius:var(--rs);padding:14px 10px;font-size:13px;font-weight:700;color:var(--blue);cursor:pointer;text-align:center;transition:all .15s;box-shadow:var(--shadow)}
+.cat-main-btn{background:#fff;border:2px solid var(--blue);border-radius:var(--rs);padding:14px 10px;font-size:13px;font-weight:700;color:var(--blue);cursor:pointer;text-align:center;transition:all .15s;box-shadow:var(--shadow);width:100%;min-height:64px}
 .cat-main-btn:active{background:var(--blue);color:#fff;transform:scale(.97)}
 
 /* 商品リスト */
@@ -350,9 +350,9 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         商品から選ぶ
       </button>
-      <button class="btn btn-gray btn-sm" onclick="addBlankItem()" style="flex:1">
+      <button class="btn btn-gray btn-sm" onclick="addBlankItem()" style="flex:1;background:#e8f2fb;color:var(--blue);border:1.5px solid var(--blue)">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        行を追加
+        フリー入力で追加
       </button>
     </div>
     <div class="total-area"><span>合計金額（税抜）</span><span class="total-num" id="total-display">¥0</span></div>
@@ -1074,7 +1074,7 @@ function addProductToOrder(productId) {
 function renderOrderItems() {
   const c = document.getElementById('order-items');
   if (!currentItems.length) {
-    c.innerHTML = '<div style="text-align:center;padding:18px;color:var(--gray);font-size:12px">品目がありません</div>';
+    c.innerHTML = '<div style="text-align:center;padding:16px;color:var(--gray);font-size:12px;line-height:1.8">品目がありません<br><span style="font-size:11px">↓「商品から選ぶ」または「フリー入力で追加」で追加</span></div>';
     updateTotal(); return;
   }
   c.innerHTML = currentItems.map((item,i) => `
@@ -1175,7 +1175,7 @@ function renderCatGrid() {
   appData.categories.forEach(function(cat) {
     const count = appData.products.filter(function(p){ return p.cat === cat; }).length;
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'position:relative;';
+    wrap.style.cssText = 'position:relative;display:flex;';
 
     const btn = document.createElement('button');
     btn.className = 'cat-main-btn';
@@ -1314,25 +1314,30 @@ function previewPDF() {
 
   // 描画後に印鑑画像を注入（selectedHankoを直接参照）
   setTimeout(() => {
-    const h1 = document.getElementById('pdf-hanko-1');
-    const h2 = document.getElementById('pdf-hanko-2');
+    const h1 = document.getElementById('pdf-hanko-1'); // 左=承認欄（空欄）
+    const h2 = document.getElementById('pdf-hanko-2'); // 右=担当者印鑑
     const sid = appData.selectedHanko;
+
+    // 左（承認）は常に空欄
+    if (h1) {
+      h1.innerHTML = '<span style="font-size:6pt;opacity:.5;display:block;text-align:center">承認</span>';
+    }
+
+    // 右（担当者）に選択された印鑑を表示
     if (sid && appData.hankos && appData.hankos.length) {
       const hanko = appData.hankos.find(function(h){ return h.id === sid; });
-      if (hanko && h1) {
-        h1.innerHTML = '';
+      if (hanko && h2) {
+        h2.innerHTML = '';
         const img = document.createElement('img');
         img.src = hanko.img;
-        img.className = 'hanko-img';
         img.style.cssText = 'width:100%;height:100%;object-fit:contain;padding:1px';
-        h1.appendChild(img);
+        h2.appendChild(img);
       } else {
-        if (h1) h1.textContent = '印';
+        if (h2) h2.textContent = '印';
       }
     } else {
-      if (h1) h1.textContent = '印';
+      if (h2) h2.textContent = '印';
     }
-    if (h2) h2.textContent = '印';
   }, 100);
 }
 function viewOrderPDF(id) {
@@ -1400,7 +1405,9 @@ function buildPDFHTML(date, no, supplier, note, taxType, items, hankoId) {
       </div>
       <div class="pdf-hanko-area">
         <div class="pdf-hanko-box" id="pdf-hanko-box">
-          <div class="pdf-hanko-cell" id="pdf-hanko-1">印</div>
+          <div class="pdf-hanko-cell" id="pdf-hanko-1" style="flex-direction:column;font-size:7pt">
+            <span style="font-size:6pt;opacity:.6">承認</span>
+          </div>
           <div class="pdf-hanko-cell" id="pdf-hanko-2">印</div>
         </div>
       </div>
