@@ -761,9 +761,13 @@ function defaultProducts() {
 }
 function save() {
   localStorage.setItem(SK, JSON.stringify(appData));
-  // Firebase同期（接続中のみ）
+  // Firebase同期（接続中かつ同期中でないときのみ）
   if (typeof fbDb !== 'undefined' && fbDb && syncPasscode && !isSyncing) {
-    pushToFirebase();
+    // 少し遅延させて連続保存をまとめる
+    clearTimeout(window._saveTimer);
+    window._saveTimer = setTimeout(function() {
+      pushToFirebase();
+    }, 500);
   }
 }
 
@@ -2078,37 +2082,85 @@ function startSync() {
   if (fbListener) fbListener();
   setSyncUI('busy');
 
-  // 初回：ローカルデータをFirebaseにアップロード
-  pushToFirebase().then(() => {
-    // リアルタイム同期リスナー開始
-    fbListener = fbDb.collection('hacchu_data').doc(syncPasscode)
-      .onSnapshot(snap => {
-        if (isSyncing) return;
-        if (snap.exists) {
-          const remote = snap.data();
-          if (remote && remote.updatedAt !== (appData.updatedAt || '')) {
-            isSyncing = true;
-            appData = {...appData, ...remote};
-            save();
-            refreshAllViews();
-            isSyncing = false;
-          }
+  // ★修正：最初にFirebaseのデータを取得して比較する
+  fbDb.collection('hacchu_data').doc(syncPasscode).get().then(snap => {
+    if (snap.exists) {
+      const remote = snap.data();
+      // FirebaseにデータがあればそちらをベースにするかローカルかをupdatedAtで比較
+      const remoteTime = remote.updatedAt || '1970-01-01';
+      const localTime  = appData.updatedAt || '1970-01-01';
+
+      if (remoteTime > localTime) {
+        // Firebaseの方が新しい → Firebaseのデータで上書き
+        isSyncing = true;
+        const hankos = appData.hankos || []; // 印鑑データはローカルを優先
+        appData = {...appData, ...remote};
+        if (hankos.length > 0 && (!remote.hankos || remote.hankos.length === 0)) {
+          appData.hankos = hankos;
         }
-        setSyncUI('on');
-      }, err => {
-        console.warn('sync error:', err);
-        setSyncUI('off');
-      });
+        localStorage.setItem(SK, JSON.stringify(appData));
+        refreshAllViews();
+        isSyncing = false;
+        showToast('Firebaseのデータと同期しました');
+      } else {
+        // ローカルの方が新しい → ローカルをFirebaseに送る
+        pushToFirebase();
+      }
+    } else {
+      // Firebaseにデータなし → ローカルをアップロード
+      pushToFirebase();
+    }
+
+    // リアルタイムリスナー開始
+    startListener();
+  }).catch(err => {
+    console.warn('初回取得エラー:', err);
+    setSyncUI('off');
+    showToast('Firebase接続に失敗しました。ネット接続を確認してください');
   });
 }
 
+function startListener() {
+  fbListener = fbDb.collection('hacchu_data').doc(syncPasscode)
+    .onSnapshot(snap => {
+      if (isSyncing) return;
+      if (snap.exists) {
+        const remote = snap.data();
+        const remoteTime = remote && remote.updatedAt ? remote.updatedAt : '';
+        const localTime  = appData.updatedAt || '';
+        // リモートの方が新しいときだけ反映（自分のpushは無視）
+        if (remote && remoteTime && remoteTime !== localTime && remoteTime > localTime) {
+          isSyncing = true;
+          const hankos = appData.hankos || [];
+          appData = {...appData, ...remote};
+          if (hankos.length > 0 && (!remote.hankos || remote.hankos.length === 0)) {
+            appData.hankos = hankos;
+          }
+          localStorage.setItem(SK, JSON.stringify(appData));
+          refreshAllViews();
+          isSyncing = false;
+          showToast('他の端末からデータを受信しました');
+        }
+      }
+      setSyncUI('on');
+    }, err => {
+      console.warn('sync listener error:', err);
+      setSyncUI('off');
+    });
+}
+
 async function pushToFirebase() {
-  if (!fbDb || !syncPasscode) return;
+  if (!fbDb || !syncPasscode || isSyncing) return;
   isSyncing = true;
   appData.updatedAt = new Date().toISOString();
+  localStorage.setItem(SK, JSON.stringify(appData));
   try {
     await fbDb.collection('hacchu_data').doc(syncPasscode).set(appData);
-  } catch(e) { console.warn('push失敗:', e); }
+    setSyncUI('on');
+  } catch(e) {
+    console.warn('push失敗:', e);
+    setSyncUI('off');
+  }
   isSyncing = false;
 }
 
