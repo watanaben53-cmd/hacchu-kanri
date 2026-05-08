@@ -87,7 +87,7 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
 .cat-main-btn:active{background:var(--blue);color:#fff;transform:scale(.97)}
 
 /* 商品リスト */
-.prod-item{background:#fff;border-radius:var(--rs);border:1px solid var(--border);padding:11px 12px;display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;cursor:pointer;transition:all .15s;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.prod-item{background:#fff;border-radius:var(--rs);border:1px solid var(--border);padding:11px 12px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:7px;cursor:pointer;transition:all .15s;box-shadow:0 1px 3px rgba(0,0,0,.05)}
 .prod-item:active{background:var(--blue-light);border-color:var(--blue)}
 .prod-name{font-size:13px;font-weight:600}
 .prod-meta{font-size:11px;color:var(--gray);margin-top:2px}
@@ -1264,12 +1264,12 @@ function renderCatProductList(cat, search) {
   }
   list.innerHTML = prods.map(p => `
     <div class="prod-item" onclick="addProductToOrder('${p.id}')">
-      <div>
+      <div style="flex:1;min-width:0">
         <div class="prod-name">${p.name}</div>
-        <div class="prod-meta">${p.unit||''}</div>
+        <div class="prod-meta">${p.unit||''}${p.unit && p.price ? ' /' : ''}${p.price ? ' ¥'+p.price.toLocaleString() : ''}</div>
+        ${p.note ? `<div style="font-size:11px;color:#d97706;margin-top:2px;font-weight:600">📝 ${escHtml(p.note)}</div>` : ''}
       </div>
-      <div style="display:flex;align-items:center;gap:6px">
-        <div class="prod-price">${p.price ? '¥'+p.price.toLocaleString() : '―'}</div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <div class="add-icon">＋</div>
       </div>
     </div>
@@ -1285,12 +1285,12 @@ function catSearchDirect(v) {
   if (!prods.length) { results.innerHTML = '<div style="font-size:12px;color:var(--gray);text-align:center;padding:10px">該当商品なし</div>'; return; }
   results.innerHTML = prods.map(p => `
     <div class="prod-item" onclick="addProductToOrder('${p.id}')">
-      <div>
+      <div style="flex:1;min-width:0">
         <div class="prod-name">${p.name}</div>
-        <div class="prod-meta">${p.cat||''} / ${p.unit||''}</div>
+        <div class="prod-meta">${p.cat||''}${p.unit ? ' / '+p.unit : ''}${p.price ? ' / ¥'+p.price.toLocaleString() : ''}</div>
+        ${p.note ? `<div style="font-size:11px;color:#d97706;margin-top:2px;font-weight:600">📝 ${escHtml(p.note)}</div>` : ''}
       </div>
-      <div style="display:flex;align-items:center;gap:6px">
-        <div class="prod-price">${p.price ? '¥'+p.price.toLocaleString() : '―'}</div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
         <div class="add-icon">＋</div>
       </div>
     </div>
