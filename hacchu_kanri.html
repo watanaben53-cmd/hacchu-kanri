@@ -704,25 +704,8 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
 
 <div class="toast" id="toast"></div>
 
-<script>
-// Firebase SDKをオプショナルで読み込む（失敗してもアプリは動く）
-(function(){
-  function loadScript(src, cb) {
-    var s = document.createElement('script');
-    s.src = src;
-    s.onload = function(){ if(cb) cb(); };
-    s.onerror = function(){
-      // オフライン時は無視（ローカルストレージで動作継続）
-      if(cb) cb();
-    };
-    document.head.appendChild(s);
-  }
-  // CDNから読み込み（ネット接続時のみ有効）
-  loadScript('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js', function(){
-    loadScript('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js', null);
-  });
-})();
-</script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <script>
 // ============================================================
 // データ管理
@@ -2047,15 +2030,23 @@ let isSyncing = false;
 
 function initFirebase() {
   try {
-    if (!firebase.apps.length) {
+    // firebase SDKが読み込まれているか確認
+    if (typeof firebase === 'undefined') {
+      console.warn('Firebase SDKが読み込まれていません');
+      return false;
+    }
+    if (!firebase.apps || !firebase.apps.length) {
       fbApp = firebase.initializeApp(FB_CONFIG);
     } else {
       fbApp = firebase.app();
     }
     fbDb = firebase.firestore();
+    // Firestoreの設定（タイムアウト等）
+    fbDb.settings({ ignoreUndefinedProperties: true });
+    console.log('Firebase初期化成功');
     return true;
   } catch(e) {
-    console.warn('Firebase初期化失敗:', e);
+    console.warn('Firebase初期化失敗:', e.code, e.message);
     return false;
   }
 }
@@ -2096,7 +2087,7 @@ function connectPasscode() {
   localStorage.setItem('sync_passcode', code);
 
   if (!initFirebase()) {
-    showToast('Firebase接続に失敗しました。ローカルモードで動作します');
+    showToast('Firebase SDKの読み込みに失敗しました。ページを再読み込みして試してください');
     closePasscode();
     return;
   }
@@ -2141,9 +2132,25 @@ function startSync() {
     // リアルタイムリスナー開始
     startListener();
   }).catch(err => {
-    console.warn('初回取得エラー:', err);
+    console.warn('Firebase初回取得エラー:', err.code, err.message, err);
     setSyncUI('off');
-    showToast('Firebase接続に失敗しました。ネット接続を確認してください');
+
+    // エラー種別に応じたメッセージ
+    let msg = '';
+    const code = err.code || '';
+    if (code === 'permission-denied') {
+      msg = 'Firestoreのルールでアクセスが拒否されました。Firebaseコンソールでルールを確認してください';
+    } else if (code === 'unavailable' || code === 'failed-precondition') {
+      msg = 'Firebaseに接続できません。ネット接続を確認してください';
+    } else if (code === 'not-found') {
+      msg = 'Firestoreデータベースが見つかりません。Firebaseコンソールで作成してください';
+    } else if (err.message && err.message.includes('Firebase')) {
+      msg = 'Firebase SDK読み込みエラー。しばらく待ってから再試行してください';
+    } else {
+      msg = 'Firebase接続エラー: ' + (err.message || code || '不明');
+    }
+    showToast(msg);
+    console.warn('詳細エラー:', JSON.stringify({code, message: err.message}));
   });
 }
 
