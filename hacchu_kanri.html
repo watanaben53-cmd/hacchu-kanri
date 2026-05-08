@@ -1052,7 +1052,7 @@ function addProductToOrder(productId) {
   const product = appData.products.find(p => p.id === productId);
   if (!product) { showToast('商品が見つかりません'); return; }
   returningFromCatSearch = true;
-  currentItems.push({name:product.name,qty:1,price:product.price||0,unit:product.unit||'',note:product.note||'',dueDate:'',deliveredDate:''});
+  currentItems.push({name:product.name,qty:1,price:product.price||0,unit:product.unit||'',note:'',dueDate:'',deliveredDate:''});
   showPage('new-order');
   renderOrderItems();
   showToast(`「${product.name}」を追加しました`);
