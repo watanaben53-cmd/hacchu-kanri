@@ -1044,7 +1044,7 @@ function initNewOrder() {
   const m = String(today.getMonth()+1).padStart(2,'0');
   const d = String(today.getDate()).padStart(2,'0');
   document.getElementById('order-date').value = `${y}-${m}-${d}`;
-  document.getElementById('order-no').value = String(appData.orderSeq).padStart(6,'0');
+  document.getElementById('order-no').value = String(appData.orderSeq || 1).padStart(6,'0');
   document.getElementById('order-supplier').value = '';
   document.getElementById('order-note').value = '※受注確認の為、必ず納期連絡お願い致します。';
   document.querySelector('input[name="tax-type"][value="ex"]').checked = true;
@@ -1111,29 +1111,56 @@ function saveDraft() {
   persistOrder(od);
   showToast('下書き保存しました');
   editOrderId = null;
-  showPage('orders');
+  // 発注一覧へ直接遷移
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-orders').classList.add('active');
+  ['orders','new-order','pending','waiting','products','suppliers'].forEach(id => {
+    const btn = document.getElementById('nav-' + id);
+    if (btn) btn.classList.toggle('active', id === 'orders');
+  });
+  document.getElementById('hdr-title').textContent = '重松工業 発注管理';
+  renderOrders();
+  updateWaitingBadge();
+  if (typeof updatePendingBadge === 'function') updatePendingBadge();
 }
 
 function saveOrderFromPDF() {
   const sup = document.getElementById('order-supplier').value;
   if (!sup) { showToast('発注先を選択してください'); return; }
   const od = buildOrderData('sent');
-  persistOrder(od);
+  persistOrder(od);   // ← ここでorderSeqがインクリメントされる
   closePDF();
   showToast('発注書を確定保存しました');
+  // editOrderIdをnullにする前にshowPageを呼ぶと
+  // initNewOrderが走らないように制御フラグを使う
+  const wasEditing = editOrderId;
   editOrderId = null;
-  showPage('orders');
+  // 発注一覧へ遷移（renderOrdersを直接呼ぶ）
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-orders').classList.add('active');
+  ['orders','new-order','pending','waiting','products','suppliers'].forEach(id => {
+    const btn = document.getElementById('nav-' + id);
+    if (btn) btn.classList.toggle('active', id === 'orders');
+  });
+  document.getElementById('hdr-title').textContent = '重松工業 発注管理';
+  renderOrders();
+  updateWaitingBadge();
+  if (typeof updatePendingBadge === 'function') updatePendingBadge();
 }
 
 function persistOrder(od) {
   if (editOrderId) {
+    // 編集の場合：既存を更新
     const idx = appData.orders.findIndex(o => o.id === editOrderId);
     if (idx >= 0) appData.orders[idx] = {...appData.orders[idx], ...od};
   } else {
+    // 新規の場合：追加してseqをインクリメント
     appData.orders.push({id:'o'+Date.now(), ...od});
     appData.orderSeq++;
   }
-  save(); updateWaitingBadge();
+  save();
+  updateWaitingBadge();
+  if (typeof updatePendingBadge === 'function') updatePendingBadge();
 }
 
 function buildOrderData(status) {
