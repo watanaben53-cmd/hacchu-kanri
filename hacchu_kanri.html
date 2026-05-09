@@ -221,6 +221,29 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
 .pend-badge{background:var(--orange);color:#fff;border-radius:10px;font-size:10px;padding:1px 5px;font-weight:700;margin-left:3px}
 .pend-card{background:#fff;border-radius:var(--r);border-left:4px solid var(--orange);margin-bottom:10px;padding:12px 14px;box-shadow:var(--shadow)}
 
+/* 印刷済みバッジ */
+.s-printed{background:#d1e7dd;color:#0a3622}
+.print-alert{background:#fff3cd;border:1px solid #f0c040;border-radius:6px;padding:6px 10px;font-size:11px;color:#7c4a00;font-weight:600;display:flex;align-items:center;gap:5px;margin-top:4px}
+
+/* カレンダー */
+.cal-wrap{margin-bottom:80px}
+.cal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.cal-title{font-size:15px;font-weight:700;color:var(--text)}
+.cal-nav{background:none;border:1.5px solid var(--border);border-radius:8px;padding:5px 12px;font-size:13px;cursor:pointer;font-family:inherit;color:var(--text)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.cal-dow{text-align:center;font-size:10px;font-weight:700;color:var(--gray);padding:4px 0}
+.cal-dow:first-child{color:var(--red)}
+.cal-dow:last-child{color:var(--blue)}
+.cal-cell{min-height:52px;border:1px solid var(--border);border-radius:4px;padding:3px;background:#fff;font-size:10px;vertical-align:top}
+.cal-cell.today{background:#e8f2fb;border-color:var(--blue)}
+.cal-cell.other-month{background:#f9fafb;opacity:.6}
+.cal-day{font-weight:700;font-size:11px;margin-bottom:2px}
+.cal-cell:first-child .cal-day,.cal-sun .cal-day{color:var(--red)}
+.cal-cell:last-child .cal-day,.cal-sat .cal-day{color:var(--blue)}
+.cal-event{background:var(--blue);color:#fff;border-radius:3px;padding:1px 4px;margin-bottom:1px;font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;line-height:1.4}
+.cal-event.inoue-event{background:#d97706}
+.cal-event.done-event{background:#6c757d}
+
 /* 印鑑 */
 .hanko-img{width:100%;height:100%;object-fit:contain}
 .hanko-select{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
@@ -268,6 +291,10 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
     納入待ち<span class="badge" id="waiting-badge" style="display:none"></span>
   </button>
+  <button onclick="showPage('calendar')" id="nav-calendar">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+    カレンダー
+  </button>
   <button onclick="showPage('products')" id="nav-products">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
     商品
@@ -288,19 +315,32 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
 
 <!-- ===== 発注一覧 ===== -->
 <div class="page active" id="page-orders">
+  <!-- 検索バー -->
   <div class="search-w">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     <input type="text" placeholder="発注先・発注Noで検索" oninput="filterOrders(this.value)" id="order-search">
   </div>
-  <div class="sh">
-    <span class="sh-title" id="order-count-lbl">発注書 0件</span>
-    <select class="fc" style="width:auto;padding:5px 26px 5px 9px;font-size:12px;" onchange="filterOrdersByStatus(this.value)" id="status-filter">
+  <!-- 全表示・取引先別タブ -->
+  <div style="display:flex;gap:0;margin-bottom:10px;border-bottom:2px solid var(--border);overflow-x:auto">
+    <button class="order-tab active" id="tab-all" onclick="setOrderTab('all')"
+      style="padding:8px 14px;border:none;background:none;font-size:12px;font-weight:700;color:var(--blue);border-bottom:2px solid var(--blue);margin-bottom:-2px;cursor:pointer;white-space:nowrap;font-family:inherit">
+      すべて
+    </button>
+    <button class="order-tab" id="tab-supplier" onclick="setOrderTab('supplier')"
+      style="padding:8px 14px;border:none;background:none;font-size:12px;font-weight:600;color:var(--gray);cursor:pointer;white-space:nowrap;font-family:inherit">
+      取引先別
+    </button>
+    <div style="flex:1"></div>
+    <select class="fc" style="width:auto;padding:5px 26px 5px 9px;font-size:11px;margin-bottom:4px" onchange="filterOrdersByStatus(this.value)" id="status-filter">
       <option value="">全ステータス</option>
       <option value="draft">下書き</option>
       <option value="sent">送信済</option>
       <option value="partial">一部納入</option>
       <option value="done">納入完了</option>
     </select>
+  </div>
+  <div class="sh" style="margin-bottom:8px">
+    <span class="sh-title" id="order-count-lbl">発注書 0件</span>
   </div>
   <div id="orders-list"></div>
 </div>
@@ -336,6 +376,9 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
     <div id="supplier-format-alert" style="display:none;background:#fff3cd;border:1px solid #f0c040;border-radius:var(--rs);padding:10px;margin-bottom:10px;font-size:12px"></div>
     <div class="fg"><label class="fl">備考</label>
       <input type="text" class="fc" id="order-note" placeholder="※受注確認の為、必ず納期連絡お願い致します。">
+    </div>
+    <div class="fg"><label class="fl">納入予定日（わかれば入力）</label>
+      <input type="date" class="fc" id="order-delivery-date">
     </div>
     <div class="tax-row">
       <span style="font-size:12px;font-weight:600;color:var(--gray)">消費税：</span>
@@ -492,6 +535,29 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
   </div>
 </div>
 
+<!-- ===== カレンダー ===== -->
+<div class="page" id="page-calendar">
+  <div class="cal-wrap">
+    <div class="cal-header">
+      <button class="cal-nav" onclick="calPrev()">＜</button>
+      <div class="cal-title" id="cal-title"></div>
+      <button class="cal-nav" onclick="calNext()">＞</button>
+    </div>
+    <div class="cal-grid" id="cal-dow">
+      <div class="cal-dow">日</div><div class="cal-dow">月</div>
+      <div class="cal-dow">火</div><div class="cal-dow">水</div>
+      <div class="cal-dow">木</div><div class="cal-dow">金</div>
+      <div class="cal-dow">土</div>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+    <div style="margin-top:12px;font-size:11px;display:flex;gap:12px;flex-wrap:wrap">
+      <span><span style="background:var(--blue);color:#fff;border-radius:3px;padding:1px 6px">■</span> 通常発注</span>
+      <span><span style="background:#d97706;color:#fff;border-radius:3px;padding:1px 6px">■</span> 井上ブラシ</span>
+      <span><span style="background:#6c757d;color:#fff;border-radius:3px;padding:1px 6px">■</span> 納入完了</span>
+    </div>
+  </div>
+</div>
+
 <!-- ===== 保留発注 ===== -->
 <div class="page" id="page-pending">
   <div class="sh">
@@ -644,18 +710,48 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
 <div id="pdf-modal">
   <div class="pdf-wrap">
     <div class="pdf-bar">
-      <button class="btn btn-gray btn-sm" onclick="closePDF()">✕ 閉じる</button>
+      <button class="btn btn-gray btn-sm" onclick="closePDFAndReset()">✕ 閉じる</button>
       <button class="btn btn-primary btn-sm" onclick="printPDF()">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-        印刷・PDF保存
+        🖨 印刷・PDF保存
       </button>
-      <button class="btn btn-success btn-sm" onclick="saveOrderFromPDF()">✓ 発注確定</button>
     </div>
     <div id="pdf-preview"></div>
   </div>
 </div>
 
 <!-- Toast -->
+<!-- 井上ブラシ発注記録モーダル -->
+<div class="modal-ov" id="inoue-record-modal">
+  <div class="modal">
+    <div class="modal-hdr">
+      <h3>井上ブラシ 発注を記録</h3>
+      <button class="btn btn-gray btn-sm" onclick="closeInoueRecord()">閉じる</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--gray);margin-bottom:12px;line-height:1.6">
+        井上ブラシへの発注内容を発注一覧に記録します。
+      </p>
+      <div class="fg"><label class="fl">発注日</label>
+        <input type="date" class="fc" id="inoue-date">
+      </div>
+      <div class="fg"><label class="fl">発注フォーマット名</label>
+        <input type="text" class="fc" id="inoue-format-name" placeholder="例: VB-28型 馬毛ワンタッチブラシ">
+      </div>
+      <div class="fg"><label class="fl">数量・内容</label>
+        <input type="text" class="fc" id="inoue-qty" placeholder="例: 10本">
+      </div>
+      <div class="fg"><label class="fl">納入予定日</label>
+        <input type="date" class="fc" id="inoue-delivery">
+      </div>
+      <div class="fg"><label class="fl">備考</label>
+        <input type="text" class="fc" id="inoue-note" placeholder="例: FAX送付済み">
+      </div>
+      <button class="btn btn-primary btn-full" onclick="saveInoueRecord()" style="margin-top:6px">発注一覧に記録する</button>
+    </div>
+  </div>
+</div>
+
 <!-- パスコード接続モーダル -->
 <div class="passcode-overlay" id="passcode-overlay">
   <div class="passcode-card">
@@ -780,7 +876,7 @@ let returningFromCatSearch = false;
 // ============================================================
 // ナビゲーション
 // ============================================================
-const NAV_IDS = ['orders','new-order','pending','waiting','products','suppliers'];
+const NAV_IDS = ['orders','new-order','pending','waiting','calendar','products','suppliers','inoue','inoue-record'];
 
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -794,6 +890,7 @@ function showPage(name) {
     'orders':'重松工業 発注管理',
     'new-order':'新規発注書作成',
     'waiting':'納入待ち一覧',
+    'calendar':'納入予定カレンダー',
     'pending':'保留中の発注',
     'products':'商品マスタ',
     'suppliers':'発注先マスタ',
@@ -805,6 +902,7 @@ function showPage(name) {
 
   if (name === 'orders')    renderOrders();
   if (name === 'waiting')   renderWaiting();
+  if (name === 'calendar')  renderCalendar();
   if (name === 'pending')   renderPending();
   if (name === 'products')  renderProducts();
   if (name === 'suppliers') { renderSuppliers(); renderHankoList(); }
@@ -818,9 +916,28 @@ function showPage(name) {
 // ============================================================
 // 発注一覧
 // ============================================================
+// 発注一覧タブ切り替え
+let currentOrderTab = 'all';
+function setOrderTab(tab) {
+  currentOrderTab = tab;
+  document.querySelectorAll('.order-tab').forEach(b => {
+    const isActive = b.id === 'tab-' + tab;
+    b.style.color = isActive ? 'var(--blue)' : 'var(--gray)';
+    b.style.fontWeight = isActive ? '700' : '600';
+    b.style.borderBottom = isActive ? '2px solid var(--blue)' : 'none';
+    b.style.marginBottom = isActive ? '-2px' : '0';
+  });
+  renderOrders(
+    document.getElementById('order-search').value,
+    document.getElementById('status-filter').value
+  );
+}
+
 function renderOrders(filter='', statusFilter='') {
-  let orders = [...appData.orders].sort((a,b) => b.date.localeCompare(a.date));
-  if (filter) orders = orders.filter(o => o.supplier.includes(filter) || o.no.includes(filter));
+  // 井上ブラシ発注も含める（inoue_ordersから）
+  const inoueOrders = appData.inoueOrders || [];
+  let orders = [...appData.orders, ...inoueOrders].sort((a,b) => b.date.localeCompare(a.date));
+  if (filter) orders = orders.filter(o => (o.supplier||'').includes(filter) || (o.no||'').includes(filter));
   if (statusFilter) orders = orders.filter(o => o.status === statusFilter);
   document.getElementById('order-count-lbl').textContent = `発注書 ${orders.length}件`;
   const list = document.getElementById('orders-list');
@@ -829,32 +946,106 @@ function renderOrders(filter='', statusFilter='') {
   }
   const sLabels = {draft:'下書き',sent:'送信済',partial:'一部納入',done:'納入完了'};
   const sCls = {draft:'s-draft',sent:'s-sent',partial:'s-partial',done:'s-done'};
-  list.innerHTML = orders.map(o => {
-    const total = (o.items||[]).reduce((s,i) => s+(i.qty||0)*(i.price||0), 0);
-    const waitCount = (o.items||[]).filter(i => !i.deliveredDate).length;
-    const doneCount = (o.items||[]).filter(i => !!i.deliveredDate).length;
-    return `<div class="order-card">
-      <div class="oc-hdr">
-        <div>
-          <div class="oc-no">発注No. ${o.no}</div>
-          <div class="oc-sup">${o.supplier}</div>
-          <div class="oc-date">${o.date}</div>
+  // 取引先別表示
+  if (currentOrderTab === 'supplier') {
+    // 取引先でグループ化
+    const groups = {};
+    orders.forEach(o => {
+      const sup = o.supplier || '不明';
+      if (!groups[sup]) groups[sup] = [];
+      groups[sup].push(o);
+    });
+    const groupHtml = Object.entries(groups).map(([sup, grpOrders]) => {
+      const grpTotal = grpOrders.reduce((s,o) => s + (o.items||[]).reduce((t,i) => t+(i.qty||0)*(i.price||0), 0), 0);
+      return `<div style="margin-bottom:16px">
+        <div style="font-size:13px;font-weight:700;color:var(--blue);padding:8px 12px;background:var(--blue-light,#e8f2fb);border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between">
+          <span>${escHtml(sup)}</span>
+          <span style="font-size:11px;font-weight:400">${grpOrders.length}件 / ¥${grpTotal.toLocaleString()}</span>
         </div>
-        <span class="sbadge ${sCls[o.status]||'s-draft'}">${sLabels[o.status]||'下書き'}</span>
-      </div>
-      <div class="oc-body">
-        <div style="font-size:12px;color:var(--gray)">${(o.items||[]).length}品目 / 合計 ¥${total.toLocaleString()} / 納入待ち${waitCount}件</div>
-        <div class="oc-actions">
-          <button class="btn btn-outline btn-sm" onclick="editOrder('${o.id}')">編集</button>
-          <button class="btn btn-primary btn-sm" onclick="viewOrderPDF('${o.id}')">PDF</button>
-          <button class="btn btn-sm" style="background:#fff3cd;color:#7c4a00;border:1px solid #f0c040;" onclick="showOrderDetail('${o.id}')">納期管理</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteOrder('${o.id}')">削除</button>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
+        ${grpOrders.map(o => renderOrderCard(o)).join('')}
+      </div>`;
+    }).join('');
+    list.innerHTML = groupHtml || '<div class="empty"><p>発注書がありません</p></div>';
+    list.onclick = function(e) {
+      var btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      var action = btn.getAttribute('data-action');
+      var oid    = btn.getAttribute('data-id');
+      if (action === 'edit')        editOrder(oid);
+      else if (action === 'pdf')    viewOrderPDF(oid);
+      else if (action === 'detail') showOrderDetail(oid);
+      else if (action === 'markprinted') markPrinted(oid);
+      else if (action === 'unprinted')   markUnprinted(oid);
+      else if (action === 'delete') deleteOrder(oid);
+    };
+    return;
+  }
+
+  list.innerHTML = orders.map(o => renderOrderCard(o)).join('') || '<div class="empty"><p>発注書がありません</p></div>';
+
+  // イベント委譲でボタンクリックを処理
+  list.onclick = function(e) {
+    var btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    var action = btn.getAttribute('data-action');
+    var oid    = btn.getAttribute('data-id');
+    if (action === 'edit')        editOrder(oid);
+    else if (action === 'pdf')    viewOrderPDF(oid);
+    else if (action === 'detail') showOrderDetail(oid);
+    else if (action === 'markprinted') markPrinted(oid);
+    else if (action === 'unprinted')   markUnprinted(oid);
+    else if (action === 'delete') deleteOrder(oid);
+  };
 }
 
+function renderOrderCard(o) {
+  var sLabels = {draft:'下書き',sent:'送信済',partial:'一部納入',done:'納入完了'};
+  var sCls    = {draft:'s-draft',sent:'s-sent',partial:'s-partial',done:'s-done'};
+  var total     = (o.items||[]).reduce(function(s,i){ return s+(i.qty||0)*(i.price||0); }, 0);
+  var waitCount = (o.items||[]).filter(function(i){ return !i.deliveredDate; }).length;
+  var id = o.id;
+  var printedBadge = o.printed
+    ? '<span class="sbadge" style="background:#d1e7dd;color:#0a3622">🖨 印刷済</span>'
+    : '<span class="sbadge" style="background:#f8d7da;color:#842029">未印刷</span>';
+  var statusBadge = '<span class="sbadge '+(sCls[o.status]||'s-draft')+'">'+(sLabels[o.status]||'下書き')+'</span>';
+
+  var deliveryHtml = o.deliveryDate
+    ? '<div style="font-size:11px;color:#d97706;font-weight:600;margin-top:2px">📅 納入予定：' + formatDate(o.deliveryDate) + '</div>'
+    : '';
+  var inoueHtml = o.isInoue
+    ? '<div style="font-size:11px;color:#1a6baf;font-weight:600;margin-top:2px">📋 井上ブラシ専用発注書</div>'
+    : '';
+
+  var editBtns = !o.isInoue ? [
+    '<button class="btn btn-outline btn-sm" data-action="edit" data-id="'+id+'">編集</button>',
+    '<button class="btn btn-primary btn-sm" data-action="pdf" data-id="'+id+'">PDF</button>',
+    '<button class="btn btn-sm" style="background:#fff3cd;color:#7c4a00;border:1px solid #f0c040" data-action="detail" data-id="'+id+'">納期管理</button>'
+  ].join('') : '';
+
+  var printBtn = !o.printed
+    ? '<button class="btn btn-sm" style="background:#f0f0f0;color:#444;border:1px solid #ccc" data-action="markprinted" data-id="'+id+'">🖨 印刷済みにする</button>'
+    : '<button class="btn btn-sm" style="background:#d1e7dd;color:#0a3622;border:1px solid #a3cfbb" data-action="unprinted" data-id="'+id+'">✓ 印刷済（取消）</button>';
+
+  var deleteBtn = '<button class="btn btn-danger btn-sm" data-action="delete" data-id="'+id+'">削除</button>';
+
+  return '<div class="order-card">'
+    + '<div class="oc-hdr">'
+    +   '<div>'
+    +     '<div class="oc-no">発注No. '+escHtml(o.no||'')+'</div>'
+    +     '<div class="oc-sup">'+escHtml(o.supplier||'')+'</div>'
+    +     '<div class="oc-date">'+escHtml(o.date||'')+'</div>'
+    +   '</div>'
+    +   '<div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:flex-end">'
+    +     statusBadge + printedBadge
+    +   '</div>'
+    + '</div>'
+    + '<div class="oc-body">'
+    +   '<div style="font-size:12px;color:var(--gray)">'+(o.items||[]).length+'品目 / 合計 ¥'+total.toLocaleString()+' / 納入待ち'+waitCount+'件</div>'
+    +   deliveryHtml + inoueHtml
+    +   '<div class="oc-actions">'+ editBtns + printBtn + deleteBtn +'</div>'
+    + '</div>'
+    + '</div>';
+}
 function filterOrders(v) { renderOrders(v, document.getElementById('status-filter').value); }
 function filterOrdersByStatus(v) { renderOrders(document.getElementById('order-search').value, v); }
 function deleteOrder(id) {
@@ -1048,6 +1239,8 @@ function initNewOrder() {
   document.getElementById('order-no').value = String(appData.orderSeq || 1).padStart(6,'0');
   document.getElementById('order-supplier').value = '';
   document.getElementById('order-note').value = '※受注確認の為、必ず納期連絡お願い致します。';
+  const dlEl = document.getElementById('order-delivery-date');
+  if (dlEl) dlEl.value = '';
   document.querySelector('input[name="tax-type"][value="ex"]').checked = true;
   currentItems = [];
   renderOrderItems();
@@ -1170,6 +1363,7 @@ function buildOrderData(status) {
     date: document.getElementById('order-date').value,
     supplier: document.getElementById('order-supplier').value,
     note: document.getElementById('order-note').value,
+    deliveryDate: document.getElementById('order-delivery-date') ? document.getElementById('order-delivery-date').value : '',
     taxType: document.querySelector('input[name="tax-type"]:checked').value,
     items: currentItems.map(i => ({...i})),
     status
@@ -1191,6 +1385,8 @@ function editOrder(id) {
       if (inp) inp.value = order.supplier;
     }, 10);
     document.getElementById('order-note').value = order.note || '';
+    const dlEl2 = document.getElementById('order-delivery-date');
+    if (dlEl2) dlEl2.value = order.deliveryDate || '';
     const tv = order.taxType || 'ex';
     document.querySelector(`input[name="tax-type"][value="${tv}"]`).checked = true;
     currentItems = (order.items||[]).map(i => ({...i}));
@@ -1380,6 +1576,7 @@ function previewPDF() {
 function viewOrderPDF(id) {
   const order = appData.orders.find(o => o.id === id);
   if (!order) return;
+  window._currentPrintOrderId = id;
   editOrderId = id;
   document.getElementById('order-date').value = order.date;
   document.getElementById('order-no').value = order.no;
@@ -1466,7 +1663,14 @@ function buildPDFHTML(date, no, supplier, note, taxType, items, hankoId) {
   `;
 }
 
-function printPDF() { window.print(); }
+function printPDF() {
+  window.print();
+  // 現在表示中の発注書に印刷済みフラグを立てる
+  if (window._currentPrintOrderId) {
+    const o = appData.orders.find(function(x){ return x.id === window._currentPrintOrderId; });
+    if (o) { o.printed = true; save(); renderOrders(); }
+  }
+}
 function closePDF() { document.getElementById('pdf-modal').classList.remove('open'); }
 
 // ============================================================
@@ -1842,6 +2046,8 @@ function checkSupplierFormat(supplierName) {
       if (cur && cur.includes('井上ブラシ')) {
         openInoue();
         document.getElementById('order-supplier').value = '';
+        const inp2 = document.getElementById('order-supplier-input');
+        if (inp2) inp2.value = '';
         alertEl.style.display = 'none';
       }
     }, 800);
@@ -2002,15 +2208,43 @@ function confirmAndPrint() {
   if (!sup) { showToast('発注先を選択してください'); return; }
   if (!currentItems.length) { showToast('品目を追加してください'); return; }
 
-  // 発注書をFirebase/LocalStorageに保存
+  // 1) 発注書をすぐ保存
   const od = buildOrderData('sent');
   persistOrder(od);
 
-  // PDF印刷ウィンドウを開く
-  previewPDF();
+  // 2) 新規発注画面をリセット（次の発注Noに更新）
+  editOrderId = null;
+  initNewOrder();
 
-  // 印刷後に発注一覧へ遷移
-  showToast('発注確定しました！印刷ダイアログが開きます');
+  // 3) PDFプレビューを表示（保存済みデータで描画）
+  const dateStr = od.date;
+  const noStr   = od.no;
+  // 直前に保存した発注書のIDを取得（最後に追加されたもの）
+  const lastOrder = appData.orders[appData.orders.length - 1];
+  window._currentPrintOrderId = lastOrder ? lastOrder.id : null;
+  buildPDFHTML(dateStr, noStr, od.supplier, od.note, od.taxType, od.items, appData.selectedHanko);
+  document.getElementById('pdf-modal').classList.add('open');
+
+  // 4) 発注一覧も更新（バックグラウンドで）
+  renderOrders();
+  updateWaitingBadge();
+  if (typeof updatePendingBadge === 'function') updatePendingBadge();
+
+  showToast('発注確定！印刷する場合は「🖨 印刷・PDF保存」を押してください');
+}
+
+// PDFを閉じて発注一覧へ遷移
+function closePDFAndReset() {
+  closePDF();
+  // 発注一覧へ直接遷移
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-orders').classList.add('active');
+  ['orders','new-order','pending','waiting','products','suppliers'].forEach(id => {
+    const btn = document.getElementById('nav-' + id);
+    if (btn) btn.classList.toggle('active', id === 'orders');
+  });
+  document.getElementById('hdr-title').textContent = '重松工業 発注管理';
+  renderOrders();
 }
 
 // ============================================================
@@ -2141,6 +2375,172 @@ function addFreqItem(name) {
   renderOrderItems();
   showToast('「' + name + '」を追加しました');
   showPage('new-order');
+}
+
+// ============================================================
+// 井上ブラシ発注記録
+// ============================================================
+function openInoueRecord() {
+  const today = new Date();
+  const toStr = d => d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  document.getElementById('inoue-date').value = toStr(today);
+  document.getElementById('inoue-format-name').value = '';
+  document.getElementById('inoue-qty').value = '';
+  document.getElementById('inoue-delivery').value = '';
+  document.getElementById('inoue-note').value = '';
+  document.getElementById('inoue-record-modal').classList.add('open');
+}
+
+function closeInoueRecord() {
+  document.getElementById('inoue-record-modal').classList.remove('open');
+}
+
+function saveInoueRecord() {
+  const formatName = document.getElementById('inoue-format-name').value.trim();
+  if (!formatName) { showToast('フォーマット名を入力してください'); return; }
+  const qty = document.getElementById('inoue-qty').value.trim();
+  const date = document.getElementById('inoue-date').value;
+  const delivery = document.getElementById('inoue-delivery').value;
+  const note = document.getElementById('inoue-note').value.trim();
+
+  if (!appData.inoueOrders) appData.inoueOrders = [];
+  const seq = String((appData.inoueSeq || 1)).padStart(4,'0');
+  appData.inoueOrders.push({
+    id: 'inoue-' + Date.now(),
+    no: 'IB-' + seq,
+    date: date,
+    supplier: '株式会社 井上ブラシ',
+    items: [{name: formatName, qty: qty ? parseFloat(qty) : 1, price: 0, unit: qty ? '' : '式', note: note}],
+    deliveryDate: delivery,
+    note: note,
+    status: 'sent',
+    isInoue: true
+  });
+  appData.inoueSeq = (appData.inoueSeq || 1) + 1;
+  save();
+  closeInoueRecord();
+  renderOrders();
+  showToast('井上ブラシ発注を記録しました（発注一覧に表示されます）');
+}
+
+// ============================================================
+// 印刷済みフラグ管理
+// ============================================================
+function markPrinted(id) {
+  var o = appData.orders.find(function(x){ return x.id === id; });
+  if (!o) {
+    // inoueOrdersも確認
+    o = (appData.inoueOrders||[]).find(function(x){ return x.id === id; });
+    if (o) { o.printed = true; save(); renderOrders(); showToast('印刷済みにしました'); return; }
+    return;
+  }
+  o.printed = true;
+  save();
+  renderOrders();
+  showToast('印刷済みにしました');
+}
+
+function markUnprinted(id) {
+  var o = appData.orders.find(function(x){ return x.id === id; });
+  if (o) { o.printed = false; save(); renderOrders(); showToast('未印刷に戻しました'); }
+}
+
+// ============================================================
+// カレンダー
+// ============================================================
+var calYear  = new Date().getFullYear();
+var calMonth = new Date().getMonth(); // 0-indexed
+
+function calPrev() { calMonth--; if (calMonth < 0) { calMonth = 11; calYear--; } renderCalendar(); }
+function calNext() { calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; } renderCalendar(); }
+
+function renderCalendar() {
+  var title = document.getElementById('cal-title');
+  var grid  = document.getElementById('cal-grid');
+  if (!title || !grid) return;
+
+  title.textContent = calYear + '年' + (calMonth + 1) + '月';
+
+  // 全発注から納入予定日があるものを収集
+  var events = {};
+  var allOrders = (appData.orders || []).concat(appData.inoueOrders || []);
+  allOrders.forEach(function(o) {
+    var dateKey = o.deliveryDate;
+    if (!dateKey) return;
+    if (!events[dateKey]) events[dateKey] = [];
+    events[dateKey].push(o);
+  });
+
+  // カレンダーグリッド生成
+  var first = new Date(calYear, calMonth, 1);
+  var last  = new Date(calYear, calMonth + 1, 0);
+  var today = new Date();
+  var todayStr = today.getFullYear() + '-'
+    + String(today.getMonth()+1).padStart(2,'0') + '-'
+    + String(today.getDate()).padStart(2,'0');
+
+  grid.innerHTML = '';
+
+  // 先月の空白セル
+  var startDow = first.getDay(); // 0=日
+  for (var d = 0; d < startDow; d++) {
+    var blank = document.createElement('div');
+    blank.className = 'cal-cell other-month';
+    // 先月の日付を表示
+    var prevDate = new Date(calYear, calMonth, -startDow + d + 1);
+    var dayDiv = document.createElement('div');
+    dayDiv.className = 'cal-day';
+    dayDiv.textContent = prevDate.getDate();
+    blank.appendChild(dayDiv);
+    grid.appendChild(blank);
+  }
+
+  // 当月のセル
+  for (var day = 1; day <= last.getDate(); day++) {
+    var dateStr = calYear + '-'
+      + String(calMonth+1).padStart(2,'0') + '-'
+      + String(day).padStart(2,'0');
+    var cell = document.createElement('div');
+    var dow = new Date(calYear, calMonth, day).getDay();
+    cell.className = 'cal-cell' + (dateStr === todayStr ? ' today' : '') + (dow===0?' cal-sun':dow===6?' cal-sat':'');
+
+    var dayDiv = document.createElement('div');
+    dayDiv.className = 'cal-day';
+    dayDiv.textContent = day;
+    cell.appendChild(dayDiv);
+
+    // イベント表示
+    if (events[dateStr]) {
+      events[dateStr].forEach(function(o) {
+        var ev = document.createElement('div');
+        ev.className = 'cal-event' + (o.isInoue ? ' inoue-event' : '') + (o.status === 'done' ? ' done-event' : '');
+        ev.textContent = o.supplier ? o.supplier.replace('株式会社','(株)').replace('有限会社','(有)') : '';
+        ev.title = o.supplier + ' / 発注No.' + (o.no||'');
+        (function(oid, isInoue){
+          ev.onclick = function(){
+            if (!isInoue) showOrderDetail(oid);
+            else showToast('井上ブラシ：' + o.no);
+          };
+        })(o.id, o.isInoue);
+        cell.appendChild(ev);
+      });
+    }
+
+    grid.appendChild(cell);
+  }
+
+  // 翌月の空白セル（6行になるよう補完）
+  var totalCells = startDow + last.getDate();
+  var remaining = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+  for (var n = 1; n <= remaining; n++) {
+    var nextBlank = document.createElement('div');
+    nextBlank.className = 'cal-cell other-month';
+    var nextDayDiv = document.createElement('div');
+    nextDayDiv.className = 'cal-day';
+    nextDayDiv.textContent = n;
+    nextBlank.appendChild(nextDayDiv);
+    grid.appendChild(nextBlank);
+  }
 }
 
 // ============================================================
