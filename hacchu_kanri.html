@@ -317,7 +317,21 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
       <div class="fg"><label class="fl">発注No</label><input type="text" class="fc" id="order-no" readonly style="background:#f9fafb"></div>
     </div>
     <div class="fg"><label class="fl">発注先</label>
-      <select class="fc" id="order-supplier" onchange="checkSupplierFormat(this.value)"><option value="">発注先を選択</option></select>
+      <div style="position:relative">
+        <input type="text" class="fc" id="order-supplier-input"
+          placeholder="発注先を入力または選択..."
+          oninput="filterSupplierList(this.value)"
+          onfocus="showSupplierList()"
+          autocomplete="off"
+          style="padding-right:36px">
+        <svg style="position:absolute;right:10px;top:50%;transform:translateY(-50%);pointer-events:none;opacity:.4"
+          width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <div id="supplier-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--blue);border-top:none;border-radius:0 0 var(--rs) var(--rs);max-height:200px;overflow-y:auto;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,.1)"></div>
+      </div>
+      <!-- 実際の値保持用（非表示） -->
+      <input type="hidden" id="order-supplier" value="">
     </div>
     <div id="supplier-format-alert" style="display:none;background:#fff3cd;border:1px solid #f0c040;border-radius:var(--rs);padding:10px;margin-bottom:10px;font-size:12px"></div>
     <div class="fg"><label class="fl">備考</label>
@@ -363,9 +377,9 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
     <button class="btn btn-full" style="background:#d97706;color:#fff;font-weight:600" onclick="savePending()">
       ⏸ 保留にする
     </button>
-    <button class="btn btn-primary btn-full" onclick="previewPDF()">
+    <button class="btn btn-primary btn-full" onclick="confirmAndPrint()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-      発注確定・印刷
+      ✓ 発注確定・印刷
     </button>
   </div>
 </div>
@@ -380,11 +394,14 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     カテゴリから商品を選ぶ
   </div>
-  <div class="search-w" style="margin-bottom:14px">
+  <div class="search-w" style="margin-bottom:10px">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
     <input type="text" placeholder="品名で直接検索" oninput="catSearchDirect(this.value)" id="cat-direct-search">
   </div>
-  <div id="cat-search-direct-results" style="margin-bottom:14px"></div>
+  <div id="cat-search-direct-results" style="margin-bottom:10px"></div>
+
+  <!-- よく発注する商品 -->
+  <div id="freq-items-section" style="margin-bottom:14px"></div>
   <div id="cat-grid-main" class="cat-grid-main"></div>
 </div>
 
@@ -1021,7 +1038,8 @@ function updateWaitingBadge() {
 // ============================================================
 function initNewOrder() {
   editOrderId = null;
-  renderHankoSelect(); // 印鑑選択UIを初期化
+  renderHankoSelect();
+  resetSupplierInput();
   const today = new Date();
   const y = today.getFullYear();
   const m = String(today.getMonth()+1).padStart(2,'0');
@@ -1167,7 +1185,11 @@ function editOrder(id) {
     document.getElementById('order-date').value = order.date;
     document.getElementById('order-no').value = order.no;
     renderSupplierSelect();
-    setTimeout(() => { document.getElementById('order-supplier').value = order.supplier; }, 10);
+    setTimeout(() => {
+      document.getElementById('order-supplier').value = order.supplier;
+      const inp = document.getElementById('order-supplier-input');
+      if (inp) inp.value = order.supplier;
+    }, 10);
     document.getElementById('order-note').value = order.note || '';
     const tv = order.taxType || 'ex';
     document.querySelector(`input[name="tax-type"][value="${tv}"]`).checked = true;
@@ -1182,6 +1204,7 @@ function editOrder(id) {
 function renderCatGrid() {
   document.getElementById('cat-direct-search').value = '';
   document.getElementById('cat-search-direct-results').innerHTML = '';
+  renderFreqItems(); // よく発注する商品を表示
   const grid = document.getElementById('cat-grid-main');
   grid.innerHTML = '';
 
@@ -1970,6 +1993,155 @@ function deleteHanko(id) {
 
 // renderSuppliersが呼ばれたら印鑑リストも再描画
 // ※showPage('suppliers')内でrenderSuppliersが呼ばれるのでここでは不要
+
+// ============================================================
+// 発注確定＋印刷を一発で（PDFプレビューなし）
+// ============================================================
+function confirmAndPrint() {
+  const sup = document.getElementById('order-supplier').value;
+  if (!sup) { showToast('発注先を選択してください'); return; }
+  if (!currentItems.length) { showToast('品目を追加してください'); return; }
+
+  // 発注書をFirebase/LocalStorageに保存
+  const od = buildOrderData('sent');
+  persistOrder(od);
+
+  // PDF印刷ウィンドウを開く
+  previewPDF();
+
+  // 印刷後に発注一覧へ遷移
+  showToast('発注確定しました！印刷ダイアログが開きます');
+}
+
+// ============================================================
+// 発注先検索（テキスト入力フィルタリング）
+// ============================================================
+function showSupplierList() {
+  filterSupplierList(document.getElementById('order-supplier-input').value || '');
+}
+
+function filterSupplierList(val) {
+  const dropdown = document.getElementById('supplier-dropdown');
+  const suppliers = appData.suppliers || [];
+  const filtered = val
+    ? suppliers.filter(function(s){ return s.name.includes(val); })
+    : suppliers;
+
+  if (!filtered.length) {
+    dropdown.style.display = 'none';
+    return;
+  }
+
+  dropdown.style.display = 'block';
+  dropdown.innerHTML = '';
+  filtered.forEach(function(s) {
+    const hasFormat = s.format && s.format.name;
+    const item = document.createElement('div');
+    item.style.cssText = 'padding:10px 13px;cursor:pointer;border-bottom:1px solid var(--border);font-size:13px;display:flex;justify-content:space-between;align-items:center;background:#fff';
+    item.onmouseover = function(){ this.style.background = '#e8f2fb'; };
+    item.onmouseout  = function(){ this.style.background = '#fff'; };
+    (function(name){ item.onclick = function(){ selectSupplier(name); }; })(s.name);
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = s.name;
+    item.appendChild(nameSpan);
+    if (hasFormat) {
+      const badge = document.createElement('span');
+      badge.textContent = '専用';
+      badge.style.cssText = 'font-size:10px;background:#fff3cd;color:#7c4a00;padding:1px 6px;border-radius:10px';
+      item.appendChild(badge);
+    }
+    dropdown.appendChild(item);
+  });
+
+  setTimeout(function() {
+    document.addEventListener('click', closeSupplierDropdown, {once: true});
+  }, 0);
+}
+
+function selectSupplier(name) {
+  document.getElementById('order-supplier-input').value = name;
+  document.getElementById('order-supplier').value = name;
+  document.getElementById('supplier-dropdown').style.display = 'none';
+  checkSupplierFormat(name);
+}
+
+function closeSupplierDropdown(e) {
+  const dd = document.getElementById('supplier-dropdown');
+  const inp = document.getElementById('order-supplier-input');
+  if (dd && !dd.contains(e.target) && e.target !== inp) {
+    dd.style.display = 'none';
+  }
+}
+
+// 発注先inputのリセット（initNewOrder内から呼ばれる）
+function resetSupplierInput() {
+  const inp = document.getElementById('order-supplier-input');
+  const hid = document.getElementById('order-supplier');
+  if (inp) inp.value = '';
+  if (hid) hid.value = '';
+}
+
+// ============================================================
+// よく発注する商品（発注履歴から集計）
+// ============================================================
+function renderFreqItems() {
+  const section = document.getElementById('freq-items-section');
+  if (!section) return;
+
+  // 発注履歴から商品名の出現頻度を集計
+  const freq = {};
+  (appData.orders || []).forEach(order => {
+    (order.items || []).forEach(item => {
+      if (!item.name) return;
+      freq[item.name] = (freq[item.name] || 0) + 1;
+    });
+  });
+
+  // 2回以上発注されたもので多い順にTop8
+  const sorted = Object.entries(freq)
+    .filter(([name, cnt]) => cnt >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
+
+  if (!sorted.length) {
+    section.innerHTML = '';
+    return;
+  }
+
+  section.innerHTML = '';
+  const titleDiv = document.createElement('div');
+  titleDiv.style.cssText = 'font-size:12px;font-weight:700;color:var(--blue);margin-bottom:8px';
+  titleDiv.textContent = '🔥 よく発注する商品';
+  section.appendChild(titleDiv);
+
+  const btnWrap = document.createElement('div');
+  btnWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px';
+  sorted.forEach(function(item) {
+    var name = item[0], cnt = item[1];
+    var prod = appData.products.find(function(p){ return p.name === name; });
+    var pid = prod ? prod.id : null;
+    var btn = document.createElement('button');
+    btn.style.cssText = 'background:#fff;border:1.5px solid var(--blue);border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit;color:var(--blue);display:flex;align-items:center;gap:4px';
+    (function(p, n){ btn.onclick = function(){ p ? addProductToOrder(p) : addFreqItem(n); }; })(pid, name);
+    var nameSpan = document.createElement('span');
+    nameSpan.textContent = name;
+    var cntSpan = document.createElement('span');
+    cntSpan.style.cssText = 'background:var(--blue);color:#fff;border-radius:10px;font-size:10px;padding:0 5px;font-weight:700';
+    cntSpan.textContent = cnt + '回';
+    btn.appendChild(nameSpan);
+    btn.appendChild(cntSpan);
+    btnWrap.appendChild(btn);
+  });
+  section.appendChild(btnWrap);
+}
+
+function addFreqItem(name) {
+  // 商品マスタにない場合はフリー入力で追加
+  currentItems.push({name:name, qty:1, price:0, unit:'', note:'', dueDate:'', deliveredDate:''});
+  renderOrderItems();
+  showToast('「' + name + '」を追加しました');
+  showPage('new-order');
+}
 
 // ============================================================
 // ユーティリティ
