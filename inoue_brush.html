@@ -755,15 +755,20 @@ function confirmInoueOrder() {
       + String(today.getDate()).padStart(2,'0');
   }
 
-  // 数量を収集
+  // 数量を収集（商品名はフォーマット名をそのまま使用）
   var items = [];
   f.fields.forEach(function(field) {
     if (field.type === 'date_cover') return;
     var el = document.getElementById('inp-' + field.id);
     var val = el ? el.value : '';
-    if (val) {
+    // フォーマット名を商品名に。左右や複数ある場合はラベルを付ける
+    var hasMultipleQty = f.fields.filter(function(ff){ return ff.type !== 'date_cover'; }).length > 1;
+    var itemName = hasMultipleQty && field.label
+      ? f.name + '（' + field.label + '）'
+      : f.name;
+    if (val && parseFloat(val) > 0) {
       items.push({
-        name: f.name + (field.label !== '注文本数' && field.label !== '注文枚数' ? '（' + field.label + '）' : ''),
+        name: itemName,
         qty: parseFloat(val) || 1,
         price: 0,
         unit: field.unit || '本',
@@ -777,8 +782,8 @@ function confirmInoueOrder() {
     items = [{name: f.name, qty: 1, price: 0, unit: '式', note: ''}];
   }
 
-  // 納入予定日を入力するプロンプト
-  var delivery = prompt('納入予定日を入力してください（例: 2026-05-20）\n空欄でも記録できます', '');
+  // 納入予定日は発注後に「納期管理」から入力（ここでは空欄）
+  var delivery = '';
 
   // hacchu_kanri.htmlに postMessage で送信
   var orderData = {

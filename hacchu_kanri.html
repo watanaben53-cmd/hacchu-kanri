@@ -1045,11 +1045,13 @@ function renderOrderCard(o) {
     ? '<div style="font-size:11px;color:#1a6baf;font-weight:600;margin-top:2px">📋 井上ブラシ専用発注書</div>'
     : '';
 
-  var editBtns = !o.isInoue ? [
-    '<button class="btn btn-outline btn-sm" data-action="edit" data-id="'+id+'">編集</button>',
-    '<button class="btn btn-primary btn-sm" data-action="pdf" data-id="'+id+'">PDF</button>',
-    '<button class="btn btn-sm" style="background:#fff3cd;color:#7c4a00;border:1px solid #f0c040" data-action="detail" data-id="'+id+'">納期管理</button>'
-  ].join('') : '';
+  var editBtns = !o.isInoue
+    ? [
+        '<button class="btn btn-outline btn-sm" data-action="edit" data-id="'+id+'">編集</button>',
+        '<button class="btn btn-primary btn-sm" data-action="pdf" data-id="'+id+'">PDF</button>',
+        '<button class="btn btn-sm" style="background:#fff3cd;color:#7c4a00;border:1px solid #f0c040" data-action="detail" data-id="'+id+'">納期管理</button>'
+      ].join('')
+    : '<button class="btn btn-sm" style="background:#fff3cd;color:#7c4a00;border:1px solid #f0c040" data-action="detail" data-id="'+id+'">📅 納期・納入管理</button>';
 
   var printBtn = !o.printed
     ? '<button class="btn btn-sm" style="background:#f0f0f0;color:#444;border:1px solid #ccc" data-action="markprinted" data-id="'+id+'">🖨 印刷済みにする</button>'
@@ -1087,7 +1089,11 @@ function deleteOrder(id) {
 // 発注書詳細・納期管理
 // ============================================================
 function showOrderDetail(id) {
-  const order = appData.orders.find(o => o.id === id);
+  // 通常発注とinoue発注の両方を検索
+  var order = appData.orders.find(function(o){ return o.id === id; });
+  if (!order) {
+    order = (appData.inoueOrders||[]).find(function(o){ return o.id === id; });
+  }
   if (!order) return;
   renderOrderDetailContent(order);
   showPage('order-detail');
@@ -1097,6 +1103,7 @@ function renderOrderDetailContent(order) {
   const sLabels = {draft:'下書き',sent:'送信済',partial:'一部納入',done:'納入完了'};
   const sCls = {draft:'s-draft',sent:'s-sent',partial:'s-partial',done:'s-done'};
   const total = (order.items||[]).reduce((s,i) => s+(i.qty||0)*(i.price||0), 0);
+  const isInoue = !!order.isInoue;
 
   const itemsHtml = (order.items||[]).map((item, idx) => {
     const isDone = !!item.deliveredDate;
@@ -1127,6 +1134,20 @@ function renderOrderDetailContent(order) {
   }).join('');
 
   document.getElementById('order-detail-content').innerHTML = `
+    <!-- 発注全体の納入予定日 -->
+    <div class="card" style="margin-bottom:10px">
+      <div class="card-ttl">📅 納入予定日</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+        <input type="date" class="fc" id="delivery-date-${order.id}"
+          value="${order.deliveryDate||''}"
+          onchange="saveDeliveryDate('${order.id}',this.value)"
+          style="flex:1">
+        <button class="btn btn-primary btn-sm" onclick="saveDeliveryDate('${order.id}',document.getElementById('delivery-date-${order.id}').value)">
+          保存
+        </button>
+      </div>
+      ${order.deliveryDate ? `<div style="font-size:12px;color:#d97706;font-weight:600;margin-top:6px">📅 ${formatDate(order.deliveryDate)} 納入予定</div>` : '<div style="font-size:11px;color:var(--gray);margin-top:4px">納入予定日を設定するとカレンダーに表示されます</div>'}
+    </div>
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div>
@@ -1149,8 +1170,24 @@ function renderOrderDetailContent(order) {
   `;
 }
 
+// 発注全体の納入予定日を保存
+function saveDeliveryDate(orderId, val) {
+  var order = appData.orders.find(function(o){ return o.id === orderId; });
+  if (!order) {
+    order = (appData.inoueOrders||[]).find(function(o){ return o.id === orderId; });
+  }
+  if (!order) return;
+  order.deliveryDate = val;
+  save();
+  // 詳細画面を再描画
+  renderOrderDetailContent(order);
+  renderOrders();
+  showToast('納入予定日を保存しました');
+}
+
 function saveDueDate(orderId, idx, val) {
-  const order = appData.orders.find(o => o.id === orderId);
+  let order = appData.orders.find(o => o.id === orderId);
+  if (!order) order = (appData.inoueOrders||[]).find(o => o.id === orderId);
   if (!order || !order.items[idx]) return;
   order.items[idx].dueDate = val;
   save(); renderOrderDetailContent(order);
@@ -1158,7 +1195,8 @@ function saveDueDate(orderId, idx, val) {
 }
 
 function markDelivered(orderId, idx) {
-  const order = appData.orders.find(o => o.id === orderId);
+  let order = appData.orders.find(o => o.id === orderId);
+  if (!order) order = (appData.inoueOrders||[]).find(o => o.id === orderId);
   if (!order || !order.items[idx]) return;
   const dateInput = document.getElementById(`del-date-${orderId}-${idx}`);
   const delDate = dateInput ? dateInput.value : todayStr();
@@ -1169,7 +1207,8 @@ function markDelivered(orderId, idx) {
 }
 
 function undoDelivery(orderId, idx) {
-  const order = appData.orders.find(o => o.id === orderId);
+  let order = appData.orders.find(o => o.id === orderId);
+  if (!order) order = (appData.inoueOrders||[]).find(o => o.id === orderId);
   if (!order || !order.items[idx]) return;
   order.items[idx].deliveredDate = '';
   updateOrderStatus(order);
@@ -1200,7 +1239,8 @@ function updateOrderStatus(order) {
 // ============================================================
 function renderWaiting() {
   const waiting = [];
-  appData.orders.forEach(order => {
+  const allOrdersW = (appData.orders||[]).concat(appData.inoueOrders||[]);
+  allOrdersW.forEach(order => {
     if (order.status === 'done') return;
     const pendingItems = (order.items||[]).filter(i => !i.deliveredDate);
     if (pendingItems.length > 0) waiting.push({ order, pendingItems });
@@ -1245,7 +1285,8 @@ function markDeliveredFromWaiting(orderId, idx) {
 
 function updateWaitingBadge() {
   let count = 0;
-  appData.orders.forEach(o => {
+  const _allOrds = (appData.orders||[]).concat(appData.inoueOrders||[]);
+  _allOrds.forEach(o => {
     if (o.status !== 'done') count += (o.items||[]).filter(i => !i.deliveredDate).length;
   });
   const badge = document.getElementById('waiting-badge');
