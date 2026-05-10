@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="theme-color" content="#1a6baf">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="重松発注">
 <link rel="manifest" href="https://watanaben53-cmd.github.io/hacchu-kanri/manifest.json">
@@ -966,7 +967,7 @@ function renderOrders(filter='', statusFilter='') {
       groups[sup].push(o);
     });
     // 取引先一覧を表示（クリックで展開）
-    var groupHtml = Object.entries(groups).map(function(entry) {
+    var groupHtml = Object.entries(groups).map(function(entry, idx) {
       var sup = entry[0], grpOrders = entry[1];
       var grpTotal = grpOrders.reduce(function(s,o){
         return s + (o.items||[]).reduce(function(t,i){ return t+(i.qty||0)*(i.price||0); }, 0);
@@ -975,19 +976,21 @@ function renderOrders(filter='', statusFilter='') {
       var unprintedBadge = unprintedCount > 0
         ? '<span style="background:#dc3545;color:#fff;border-radius:10px;font-size:10px;padding:1px 7px;font-weight:700;margin-left:4px">未印刷' + unprintedCount + '件</span>'
         : '';
-      var safeId = 'grp-' + sup.replace(/[^a-zA-Z0-9]/g, '_');
-      var hdrHtml = '<div data-action="togglegrp" data-grpid="' + safeId + '" style="font-size:13px;font-weight:700;color:var(--text);padding:11px 14px;background:#fff;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,.05);margin-bottom:4px">'
-        + '<div style="display:flex;align-items:center;gap:6px">'
-        + '<span>' + escHtml(sup) + '</span>'
-        + '<span style="background:var(--blue);color:#fff;border-radius:10px;font-size:10px;padding:1px 7px;font-weight:700">' + grpOrders.length + '件</span>'
+      // インデックスをIDに使って重複を防ぐ
+      var grpId = 'grp-body-' + idx;
+      var hdrId = 'grp-hdr-' + idx;
+      var hdrHtml = '<div id="' + hdrId + '" data-action="togglegrp" data-grpid="' + grpId + '" style="font-size:13px;font-weight:700;color:var(--text);padding:11px 14px;background:#fff;border:1.5px solid var(--border);border-radius:10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,.05);margin-bottom:4px">'
+        + '<div style="display:flex;align-items:center;gap:6px;min-width:0;flex:1">'
+        + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(sup) + '</span>'
+        + '<span style="background:var(--blue);color:#fff;border-radius:10px;font-size:10px;padding:1px 7px;font-weight:700;flex-shrink:0">' + grpOrders.length + '件</span>'
         + unprintedBadge
         + '</div>'
-        + '<div style="font-size:11px;color:var(--gray)">¥' + grpTotal.toLocaleString() + ' ▼</div>'
+        + '<div data-arrow="' + grpId + '" style="font-size:11px;color:var(--gray);flex-shrink:0;margin-left:6px">¥' + grpTotal.toLocaleString() + ' ▼</div>'
         + '</div>';
-      var bodyHtml = '<div id="' + safeId + '" style="display:none;margin-bottom:8px">'
+      var bodyHtml = '<div id="' + grpId + '" style="display:none;margin-bottom:8px">'
         + grpOrders.map(function(o){ return renderOrderCard(o); }).join('')
         + '</div>';
-      return '<div>' + hdrHtml + bodyHtml + '</div>';
+      return '<div style="margin-bottom:6px">' + hdrHtml + bodyHtml + '</div>';
     }).join('');
     list.innerHTML = groupHtml || '<div class="empty"><p>発注書がありません</p></div>';
     list.onclick = function(e) {
@@ -2455,14 +2458,18 @@ function saveInoueRecord() {
 function toggleGroup(id) {
   var el = document.getElementById(id);
   if (!el) return;
-  var hdr = el.previousElementSibling;
-  var arrow = hdr ? hdr.querySelector('div:last-child') : null;
+  // data-arrow属性でアイコン要素を特定
+  var arrow = document.querySelector('[data-arrow="' + id + '"]');
   if (el.style.display === 'none') {
     el.style.display = 'block';
-    if (arrow) arrow.textContent = arrow.textContent.replace('▼','▲');
+    if (arrow) {
+      arrow.textContent = arrow.textContent.replace('▼','▲');
+    }
   } else {
     el.style.display = 'none';
-    if (arrow) arrow.textContent = arrow.textContent.replace('▲','▼');
+    if (arrow) {
+      arrow.textContent = arrow.textContent.replace('▲','▼');
+    }
   }
 }
 
@@ -2527,17 +2534,29 @@ function renderCalendar() {
   // 全発注から納入予定日があるものを収集
   var events = {};
   var allOrders = (appData.orders || []).concat(appData.inoueOrders || []);
+  var datePattern = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
   allOrders.forEach(function(o) {
-    var dateKey = o.deliveryDate;
-    if (!dateKey || dateKey === '') return;
-    // YYYY-MM-DD形式に正規化
-    var normalized = dateKey.trim();
-    if (!normalized.match(/^\d{4}-\d{2}-\d{2}$/)) return;
-    if (!events[normalized]) events[normalized] = [];
-    events[normalized].push(o);
+    var candidates = [];
+    // 発注書全体のdeliveryDateを優先
+    if (o.deliveryDate && o.deliveryDate.trim()) {
+      candidates.push(o.deliveryDate.trim());
+    }
+    // なければ品目のdueDateを参照
+    if (!candidates.length) {
+      (o.items || []).forEach(function(item) {
+        if (item.dueDate && item.dueDate.trim()) {
+          candidates.push(item.dueDate.trim());
+        }
+      });
+    }
+    candidates.forEach(function(dateKey) {
+      if (!datePattern.test(dateKey)) return;
+      if (!events[dateKey]) events[dateKey] = [];
+      if (!events[dateKey].find(function(x){ return x.id === o.id; })) {
+        events[dateKey].push(o);
+      }
+    });
   });
-  console.log('カレンダーイベント数:', Object.keys(events).length, events);
-
   // カレンダーグリッド生成
   var first = new Date(calYear, calMonth, 1);
   var last  = new Date(calYear, calMonth + 1, 0);
@@ -2681,7 +2700,7 @@ function initFirebase() {
     }
     fbDb = firebase.firestore();
     // Firestoreの設定（タイムアウト等）
-    fbDb.settings({ ignoreUndefinedProperties: true });
+    fbDb.settings({ ignoreUndefinedProperties: true, merge: true });
     console.log('Firebase初期化成功');
     return true;
   } catch(e) {
@@ -2966,12 +2985,60 @@ function deletePending(id) {
 window.onload = () => {
   // 基本機能を先に起動（Firebase不要）
   try {
+    // 井上ブラシ発注の保留データをlocalStorageから取り込む
+    var inoue_pending = JSON.parse(localStorage.getItem('inoue_pending_orders') || '[]');
+    if (inoue_pending.length > 0) {
+      if (!appData.inoueOrders) appData.inoueOrders = [];
+      inoue_pending.forEach(function(od) {
+        var seq = String(appData.inoueSeq || 1).padStart(4,'0');
+        appData.inoueOrders.push({
+          id: 'inoue-' + Date.now() + Math.random(),
+          no: 'IB-' + seq,
+          date: od.date || new Date().toISOString().slice(0,10),
+          supplier: '株式会社 井上ブラシ',
+          items: od.items || [{name: od.formatName||'発注', qty: od.qty||1, price:0, unit:'式', note:''}],
+          deliveryDate: od.deliveryDate || '',
+          note: od.note || '',
+          status: 'sent',
+          printed: true,
+          isInoue: true
+        });
+        appData.inoueSeq = (appData.inoueSeq || 1) + 1;
+      });
+      localStorage.removeItem('inoue_pending_orders');
+      save();
+    }
     renderSupplierSelect();
     initNewOrder();
     renderOrders();
     updateWaitingBadge();
     updatePendingBadge();
   } catch(e) { console.error('初期化エラー:', e); }
+
+  // 井上ブラシ発注書からの発注確定メッセージを受信
+  window.addEventListener('message', function(event) {
+    if (!event.data || event.data.type !== 'INOUE_ORDER_CONFIRMED') return;
+    var od = event.data.order;
+    if (!od) return;
+    if (!appData.inoueOrders) appData.inoueOrders = [];
+    var seq = String(appData.inoueSeq || 1).padStart(4,'0');
+    appData.inoueOrders.push({
+      id: 'inoue-' + Date.now(),
+      no: 'IB-' + seq,
+      date: od.date || new Date().toISOString().slice(0,10),
+      supplier: '株式会社 井上ブラシ',
+      items: od.items || [{name: od.formatName || '発注', qty: od.qty || 1, price: 0, unit: od.unit || '式', note: ''}],
+      deliveryDate: od.deliveryDate || '',
+      note: od.note || '',
+      status: 'sent',
+      printed: true,  // 印刷して発注確定した扱い
+      isInoue: true
+    });
+    appData.inoueSeq = (appData.inoueSeq || 1) + 1;
+    save();
+    renderOrders();
+    showToast('井上ブラシ発注を一覧に記録しました！');
+  });
 
   // 保存済みパスコードがあれば自動接続（失敗してもアプリは動く）
   try {

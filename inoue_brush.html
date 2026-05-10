@@ -122,6 +122,9 @@ input[type=number]{-moz-appearance:textfield}
   <div class="op-panel">
     <div class="op-hint">📝 黄色の入力欄に発注日と数量を入力 → 「🖨 印刷・PDF保存」</div>
     <button class="btn btn-green" onclick="doPrint()">🖨 印刷・PDF保存</button>
+    <button class="btn" onclick="confirmInoueOrder()" style="background:#1a6baf;color:#fff;font-weight:700;padding:8px 14px;border:none;border-radius:8px;cursor:pointer;font-size:12px;font-family:inherit">
+      ✓ 発注確定・一覧に記録
+    </button>
   </div>
   <!-- 調整パネル（調整モード時のみ表示） -->
   <div class="adj-panel" id="adj-panel" style="display:none">
@@ -730,6 +733,78 @@ function endAdjDrag() {
 
 // 起動時に保存済み調整を反映
 applySavedAdj();
+
+
+// ============================================================
+// 発注確定：hacchu_kanri.htmlに発注データを送信
+// ============================================================
+function confirmInoueOrder() {
+  if (!currentId) {
+    alert('発注書を選択してください');
+    return;
+  }
+  var f = FORMATS[currentId];
+
+  // 発注日を取得
+  var dateEl = document.getElementById('inp-date');
+  var orderDate = dateEl ? dateEl.value : '';
+  if (!orderDate) {
+    var today = new Date();
+    orderDate = today.getFullYear() + '-'
+      + String(today.getMonth()+1).padStart(2,'0') + '-'
+      + String(today.getDate()).padStart(2,'0');
+  }
+
+  // 数量を収集
+  var items = [];
+  f.fields.forEach(function(field) {
+    if (field.type === 'date_cover') return;
+    var el = document.getElementById('inp-' + field.id);
+    var val = el ? el.value : '';
+    if (val) {
+      items.push({
+        name: f.name + (field.label !== '注文本数' && field.label !== '注文枚数' ? '（' + field.label + '）' : ''),
+        qty: parseFloat(val) || 1,
+        price: 0,
+        unit: field.unit || '本',
+        note: ''
+      });
+    }
+  });
+
+  if (!items.length) {
+    if (!confirm('数量が入力されていません。このまま発注確定しますか？')) return;
+    items = [{name: f.name, qty: 1, price: 0, unit: '式', note: ''}];
+  }
+
+  // 納入予定日を入力するプロンプト
+  var delivery = prompt('納入予定日を入力してください（例: 2026-05-20）\n空欄でも記録できます', '');
+
+  // hacchu_kanri.htmlに postMessage で送信
+  var orderData = {
+    type: 'INOUE_ORDER_CONFIRMED',
+    order: {
+      date: orderDate,
+      formatName: f.name,
+      items: items,
+      deliveryDate: delivery || '',
+      note: ''
+    }
+  };
+
+  // openerがあれば送信（同じブラウザで開いた場合）
+  if (window.opener && !window.opener.closed) {
+    window.opener.postMessage(orderData, 'https://watanaben53-cmd.github.io/hacchu-kanri');
+    alert('発注確定しました！発注一覧に記録されました。\nこのウィンドウを閉じてください。');
+    window.close();
+  } else {
+    // openerがない場合はlocalStorageに保存（フォールバック）
+    var pending = JSON.parse(localStorage.getItem('inoue_pending_orders') || '[]');
+    pending.push(orderData.order);
+    localStorage.setItem('inoue_pending_orders', JSON.stringify(pending));
+    alert('発注確定しました！\n発注管理アプリに戻ると自動で記録されます。');
+  }
+}
 
 renderSelect();
 </script>
