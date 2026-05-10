@@ -785,30 +785,82 @@ function confirmInoueOrder() {
   // 納入予定日は発注後に「納期管理」から入力（ここでは空欄）
   var delivery = '';
 
-  // hacchu_kanri.htmlに postMessage で送信
+  // 送信するデータを準備
   var orderData = {
     type: 'INOUE_ORDER_CONFIRMED',
     order: {
       date: orderDate,
       formatName: f.name,
       items: items,
-      deliveryDate: delivery || '',
+      deliveryDate: '',
       note: ''
     }
   };
 
-  // openerがあれば送信（同じブラウザで開いた場合）
+  // まず発注管理アプリに登録（printed:falseで）
   if (window.opener && !window.opener.closed) {
     window.opener.postMessage(orderData, 'https://watanaben53-cmd.github.io/hacchu-kanri');
-    alert('発注確定しました！発注一覧に記録されました。\nこのウィンドウを閉じてください。');
-    window.close();
   } else {
-    // openerがない場合はlocalStorageに保存（フォールバック）
+    // openerがない場合はlocalStorageに保存
     var pending = JSON.parse(localStorage.getItem('inoue_pending_orders') || '[]');
     pending.push(orderData.order);
     localStorage.setItem('inoue_pending_orders', JSON.stringify(pending));
-    alert('発注確定しました！\n発注管理アプリに戻ると自動で記録されます。');
   }
+
+  // 印刷画面を開く（印刷→印刷済み、閉じる→未印刷のまま）
+  showInoueConfirmPrint(f.name, items, orderDate);
+}
+
+// 発注確定後の印刷確認画面
+function showInoueConfirmPrint(formatName, items, orderDate) {
+  var printWin = window.open('', '_blank', 'width=700,height=600');
+  if (!printWin) {
+    alert('印刷画面を開けませんでした。\n発注一覧への記録は完了しています。');
+    return;
+  }
+
+  var itemsHtml = items.map(function(item) {
+    return '<tr><td style="padding:6px 10px;border:1px solid #ccc">' + item.name + '</td>'
+      + '<td style="padding:6px 10px;border:1px solid #ccc;text-align:center">' + item.qty + '</td>'
+      + '<td style="padding:6px 10px;border:1px solid #ccc;text-align:center">' + (item.unit||'本') + '</td></tr>';
+  }).join('');
+
+  printWin.document.write('<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">'
+    + '<title>井上ブラシ 発注確定</title>'
+    + '<style>body{font-family:Meiryo,sans-serif;padding:30px;max-width:600px;margin:0 auto}'
+    + 'h2{color:#1a6baf;border-bottom:2px solid #1a6baf;padding-bottom:8px}'
+    + 'table{width:100%;border-collapse:collapse;margin:16px 0}'
+    + 'th{background:#1a6baf;color:#fff;padding:8px 10px;border:1px solid #1a6baf}'
+    + '.btn-area{display:flex;gap:12px;margin-top:24px;justify-content:center}'
+    + '.btn{padding:12px 28px;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}'
+    + '.btn-print{background:#1a6baf;color:#fff}'
+    + '.btn-close{background:#e8eaf0;color:#333}'
+    + '.note{background:#fff3cd;border:1px solid #f0c040;border-radius:6px;padding:10px;font-size:13px;margin-top:12px}'
+    + '@media print{.btn-area,.note{display:none}}'
+    + '</style></head><body>'
+    + '<h2>📋 株式会社 井上ブラシ 発注確定</h2>'
+    + '<p><strong>発注日：</strong>' + orderDate + '</p>'
+    + '<table><tr><th>商品名</th><th>数量</th><th>単位</th></tr>' + itemsHtml + '</table>'
+    + '<div class="note">✅ 発注一覧への記録が完了しました。<br>印刷する場合は「🖨 印刷する」を押してください。<br>印刷後に発注書画面は自動で閉じます。</div>'
+    + '<div class="btn-area">'
+    +   '<button class="btn btn-print" onclick="doPrint()">🖨 印刷する（印刷済みになります）</button>'
+    +   '<button class="btn btn-close" onclick="doClose()">✕ 閉じる（未印刷のまま）</button>'
+    + '</div>'
+    + '<script>'
+    + 'function doPrint(){'
+    +   'window.print();'
+    +   '// 印刷済みフラグをopenerに送信'
+    +   'if(window.opener&&!window.opener.closed){'
+    +     'window.opener.postMessage({type:"INOUE_MARK_PRINTED"},"https://watanaben53-cmd.github.io/hacchu-kanri");'
+    +   '}'
+    +   'setTimeout(function(){window.close();},500);'
+    + '}'
+    + 'function doClose(){'
+    +   'window.close();'
+    + '}'
+    + '<\/script>'
+    + '</body></html>');
+  printWin.document.close();
 }
 
 renderSelect();

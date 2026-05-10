@@ -2643,12 +2643,9 @@ function renderCalendar() {
         ev.className = 'cal-event' + (o.isInoue ? ' inoue-event' : '') + (o.status === 'done' ? ' done-event' : '');
         ev.textContent = o.supplier ? o.supplier.replace('株式会社','(株)').replace('有限会社','(有)') : '';
         ev.title = o.supplier + ' / 発注No.' + (o.no||'');
-        (function(oid, isInoue){
-          ev.onclick = function(){
-            if (!isInoue) showOrderDetail(oid);
-            else showToast('井上ブラシ：' + o.no);
-          };
-        })(o.id, o.isInoue);
+        (function(oid){
+          ev.onclick = function(){ showOrderDetail(oid); };
+        })(o.id);
         cell.appendChild(ev);
       });
     }
@@ -3041,7 +3038,7 @@ window.onload = () => {
           deliveryDate: od.deliveryDate || '',
           note: od.note || '',
           status: 'sent',
-          printed: true,
+          printed: false,
           isInoue: true
         });
         appData.inoueSeq = (appData.inoueSeq || 1) + 1;
@@ -3056,8 +3053,21 @@ window.onload = () => {
     updatePendingBadge();
   } catch(e) { console.error('初期化エラー:', e); }
 
-  // 井上ブラシ発注書からの発注確定メッセージを受信
+  // 井上ブラシ発注書からのメッセージを受信
   window.addEventListener('message', function(event) {
+    // 印刷済みフラグを立てる
+    if (event.data && event.data.type === 'INOUE_MARK_PRINTED') {
+      // 最後に追加されたinoue発注を印刷済みに
+      var inoueList = appData.inoueOrders || [];
+      if (inoueList.length > 0) {
+        var lastInoue = inoueList[inoueList.length - 1];
+        lastInoue.printed = true;
+        save();
+        renderOrders();
+        showToast('井上ブラシ発注が印刷済みになりました');
+      }
+      return;
+    }
     if (!event.data || event.data.type !== 'INOUE_ORDER_CONFIRMED') return;
     var od = event.data.order;
     if (!od) return;
@@ -3072,7 +3082,7 @@ window.onload = () => {
       deliveryDate: od.deliveryDate || '',
       note: od.note || '',
       status: 'sent',
-      printed: true,  // 印刷して発注確定した扱い
+      printed: false,  // 印刷後に印刷済みになる
       isInoue: true
     });
     appData.inoueSeq = (appData.inoueSeq || 1) + 1;
