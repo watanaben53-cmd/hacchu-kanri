@@ -1373,12 +1373,14 @@ function saveDraft() {
   if (!sup) { showToast('発注先を選択してください'); return; }
   const od = buildOrderData('draft');
   persistOrder(od);
-  showToast('下書き保存しました');
   editOrderId = null;
+  initNewOrder();
+  showToast('下書き保存しました');
   // 発注一覧へ直接遷移
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-orders').classList.add('active');
-  ['orders','new-order','pending','waiting','products','suppliers'].forEach(id => {
+  const navIds2 = ['orders','new-order','pending','waiting','calendar','products','suppliers','inoue','inoue-record'];
+  navIds2.forEach(id => {
     const btn = document.getElementById('nav-' + id);
     if (btn) btn.classList.toggle('active', id === 'orders');
   });
@@ -1389,20 +1391,14 @@ function saveDraft() {
 }
 
 function saveOrderFromPDF() {
-  const sup = document.getElementById('order-supplier').value;
-  if (!sup) { showToast('発注先を選択してください'); return; }
-  const od = buildOrderData('sent');
-  persistOrder(od);   // ← ここでorderSeqがインクリメントされる
+  // 編集後の確定（viewOrderPDFから呼ばれる場合）
   closePDF();
-  showToast('発注書を確定保存しました');
-  // editOrderIdをnullにする前にshowPageを呼ぶと
-  // initNewOrderが走らないように制御フラグを使う
-  const wasEditing = editOrderId;
   editOrderId = null;
-  // 発注一覧へ遷移（renderOrdersを直接呼ぶ）
+  initNewOrder();
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-orders').classList.add('active');
-  ['orders','new-order','pending','waiting','products','suppliers'].forEach(id => {
+  const navIds3 = ['orders','new-order','pending','waiting','calendar','products','suppliers','inoue','inoue-record'];
+  navIds3.forEach(id => {
     const btn = document.getElementById('nav-' + id);
     if (btn) btn.classList.toggle('active', id === 'orders');
   });
@@ -1743,10 +1739,11 @@ function buildPDFHTML(date, no, supplier, note, taxType, items, hankoId) {
 
 function printPDF() {
   window.print();
-  // 現在表示中の発注書に印刷済みフラグを立てる
+  // 印刷済みフラグを立てる（renderOrdersはclosePDFAndResetで行う）
   if (window._currentPrintOrderId) {
-    const o = appData.orders.find(function(x){ return x.id === window._currentPrintOrderId; });
-    if (o) { o.printed = true; save(); renderOrders(); }
+    var o = appData.orders.find(function(x){ return x.id === window._currentPrintOrderId; });
+    if (!o) o = (appData.inoueOrders||[]).find(function(x){ return x.id === window._currentPrintOrderId; });
+    if (o) { o.printed = true; save(); }
   }
 }
 function closePDF() { document.getElementById('pdf-modal').classList.remove('open'); }
@@ -2286,45 +2283,52 @@ function confirmAndPrint() {
   if (!sup) { showToast('発注先を選択してください'); return; }
   if (!currentItems.length) { showToast('品目を追加してください'); return; }
 
-  // 1) 発注書をすぐ保存
+  // 1) 発注書を保存（editOrderIdがnullのとき新規追加）
   const od = buildOrderData('sent');
   persistOrder(od);
 
-  // 2) 新規発注画面をリセット（次の発注Noに更新）
-  editOrderId = null;
-  initNewOrder();
+  // 2) 保存した発注書のIDを記録（印刷済みフラグ用）
+  const savedOrder = appData.orders[appData.orders.length - 1];
+  window._currentPrintOrderId = savedOrder ? savedOrder.id : null;
 
-  // 3) PDFプレビューを表示（保存済みデータで描画）
-  const dateStr = od.date;
-  const noStr   = od.no;
-  // 直前に保存した発注書のIDを取得（最後に追加されたもの）
-  const lastOrder = appData.orders[appData.orders.length - 1];
-  window._currentPrintOrderId = lastOrder ? lastOrder.id : null;
-  buildPDFHTML(dateStr, noStr, od.supplier, od.note, od.taxType, od.items, appData.selectedHanko);
+  // 3) PDFを表示（保存したodのデータで描画）
+  buildPDFHTML(od.date, od.no, od.supplier, od.note, od.taxType, od.items, appData.selectedHanko);
   document.getElementById('pdf-modal').classList.add('open');
-  // 印鑑注入
   setTimeout(() => { injectHanko(appData.selectedHanko); }, 150);
 
-  // 4) 発注一覧も更新（バックグラウンドで）
-  renderOrders();
-  updateWaitingBadge();
-  if (typeof updatePendingBadge === 'function') updatePendingBadge();
+  // 4) 新規発注画面をリセット（PDF閉じた後に戻ったときのため）
+  //    ※ここではinitNewOrderを呼ばない（画面遷移が起きるため）
+  //    closePDFAndReset()で発注一覧へ行くときにリセットする
+  window._needNewOrderReset = true;
 
-  showToast('発注確定！印刷する場合は「🖨 印刷・PDF保存」を押してください');
+  showToast('発注確定しました！印刷する場合は「🖨 印刷・PDF保存」を押してください');
 }
 
 // PDFを閉じて発注一覧へ遷移
 function closePDFAndReset() {
   closePDF();
+
+  // 新規発注画面をリセット（次の発注Noに更新）
+  if (window._needNewOrderReset) {
+    window._needNewOrderReset = false;
+    editOrderId = null;
+    // initNewOrderを呼ぶ前にページ遷移フラグを設定
+    returningFromCatSearch = false;
+    initNewOrder();
+  }
+
   // 発注一覧へ直接遷移
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-orders').classList.add('active');
-  ['orders','new-order','pending','waiting','products','suppliers'].forEach(id => {
+  const navIds = ['orders','new-order','pending','waiting','calendar','products','suppliers','inoue','inoue-record'];
+  navIds.forEach(id => {
     const btn = document.getElementById('nav-' + id);
     if (btn) btn.classList.toggle('active', id === 'orders');
   });
   document.getElementById('hdr-title').textContent = '重松工業 発注管理';
   renderOrders();
+  updateWaitingBadge();
+  if (typeof updatePendingBadge === 'function') updatePendingBadge();
 }
 
 // ============================================================
