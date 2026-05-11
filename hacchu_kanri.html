@@ -1038,8 +1038,14 @@ function renderOrderCard(o) {
     : '<span class="sbadge" style="background:#f8d7da;color:#842029">未印刷</span>';
   var statusBadge = '<span class="sbadge '+(sCls[o.status]||'s-draft')+'">'+(sLabels[o.status]||'下書き')+'</span>';
 
-  var deliveryHtml = o.deliveryDate
-    ? '<div style="font-size:11px;color:#d97706;font-weight:600;margin-top:2px">📅 納入予定：' + formatDate(o.deliveryDate) + '</div>'
+  // deliveryDateがなければ品目の最も早いdueDateを使用
+  var _dlDate = o.deliveryDate;
+  if (!_dlDate) {
+    var _dueDates = (o.items||[]).map(function(i){ return i.dueDate||''; }).filter(function(d){ return d; }).sort();
+    _dlDate = _dueDates.length > 0 ? _dueDates[0] : '';
+  }
+  var deliveryHtml = _dlDate
+    ? '<div style="font-size:11px;color:#d97706;font-weight:600;margin-top:2px">📅 納入予定：' + formatDate(_dlDate) + '</div>'
     : '';
   var inoueHtml = o.isInoue
     ? '<div style="font-size:11px;color:#1a6baf;font-weight:600;margin-top:2px">📋 井上ブラシ専用発注書</div>'
@@ -1134,21 +1140,7 @@ function renderOrderDetailContent(order) {
   }).join('');
 
   document.getElementById('order-detail-content').innerHTML = `
-    <!-- 発注全体の納入予定日 -->
     <div class="card" style="margin-bottom:10px">
-      <div class="card-ttl">📅 納入予定日</div>
-      <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
-        <input type="date" class="fc" id="delivery-date-${order.id}"
-          value="${order.deliveryDate||''}"
-          onchange="saveDeliveryDate('${order.id}',this.value)"
-          style="flex:1">
-        <button class="btn btn-primary btn-sm" onclick="saveDeliveryDate('${order.id}',document.getElementById('delivery-date-${order.id}').value)">
-          保存
-        </button>
-      </div>
-      ${order.deliveryDate ? `<div style="font-size:12px;color:#d97706;font-weight:600;margin-top:6px">📅 ${formatDate(order.deliveryDate)} 納入予定</div>` : '<div style="font-size:11px;color:var(--gray);margin-top:4px">納入予定日を設定するとカレンダーに表示されます</div>'}
-    </div>
-    <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <div>
           <div style="font-size:12px;color:var(--blue);font-weight:700">発注No. ${order.no}</div>
@@ -1158,6 +1150,22 @@ function renderOrderDetailContent(order) {
         <span class="sbadge ${sCls[order.status]||'s-draft'}">${sLabels[order.status]||'下書き'}</span>
       </div>
     </div>
+
+    <!-- 一括納入予定日設定 -->
+    <div class="card" style="margin-bottom:10px;background:#f0f7ff;border:1.5px solid var(--blue)">
+      <div class="card-ttl" style="margin-bottom:8px">📅 納入予定日を一括設定</div>
+      <div style="font-size:11px;color:var(--gray);margin-bottom:8px;line-height:1.6">
+        日付を入力して「全品目に設定」を押すと、全品目の納入予定日が一括で設定されます。カレンダーにも反映されます。
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="date" class="fc" id="bulk-date-${order.id}" style="flex:1">
+        <button class="btn btn-primary btn-sm" style="white-space:nowrap"
+          onclick="setBulkDueDate('${order.id}',document.getElementById('bulk-date-${order.id}').value)">
+          全品目に設定
+        </button>
+      </div>
+    </div>
+
     <div style="font-size:13px;font-weight:700;margin-bottom:9px;color:var(--text)">
       品目別 納期・納入管理
     </div>
@@ -1170,16 +1178,43 @@ function renderOrderDetailContent(order) {
   `;
 }
 
-// 発注全体の納入予定日を保存
-function saveDeliveryDate(orderId, val) {
+// 品目のdueDateからdeliveryDateを自動同期（最も早い日）
+function syncDeliveryDateFromItems(order) {
+  var dates = (order.items||[])
+    .map(function(i){ return i.dueDate || ''; })
+    .filter(function(d){ return d && d.match(/^\d{4}-\d{2}-\d{2}$/); })
+    .sort();
+  order.deliveryDate = dates.length > 0 ? dates[0] : '';
+}
+
+// 一括納入予定日設定
+function setBulkDueDate(orderId, val) {
+  if (!val) { showToast('日付を入力してください'); return; }
   var order = appData.orders.find(function(o){ return o.id === orderId; });
-  if (!order) {
-    order = (appData.inoueOrders||[]).find(function(o){ return o.id === orderId; });
-  }
+  if (!order) order = (appData.inoueOrders||[]).find(function(o){ return o.id === orderId; });
   if (!order) return;
+  // 全品目に設定（納入完了済みはスキップ）
+  (order.items||[]).forEach(function(item) {
+    if (!item.deliveredDate) item.dueDate = val;
+  });
   order.deliveryDate = val;
   save();
-  // 詳細画面を再描画
+  renderOrderDetailContent(order);
+  renderOrders();
+  showToast('全品目に「' + formatDate(val) + '」を設定しました。カレンダーに反映されます');
+}
+
+// 発注全体の納入予定日を保存（後方互換用・現在は使用しない）
+function saveDeliveryDate(orderId, val) {
+  var order = appData.orders.find(function(o){ return o.id === orderId; });
+  if (!order) order = (appData.inoueOrders||[]).find(function(o){ return o.id === orderId; });
+  if (!order) return;
+  order.deliveryDate = val;
+  // 全品目にも反映
+  (order.items||[]).forEach(function(item) {
+    if (!item.deliveredDate) item.dueDate = val;
+  });
+  save();
   renderOrderDetailContent(order);
   renderOrders();
   showToast('納入予定日を保存しました');
@@ -1190,8 +1225,11 @@ function saveDueDate(orderId, idx, val) {
   if (!order) order = (appData.inoueOrders||[]).find(o => o.id === orderId);
   if (!order || !order.items[idx]) return;
   order.items[idx].dueDate = val;
-  save(); renderOrderDetailContent(order);
-  showToast('納期を保存しました');
+  syncDeliveryDateFromItems(order);
+  save();
+  renderOrderDetailContent(order);
+  renderOrders();
+  showToast('納期を保存しました。カレンダーに反映されます');
 }
 
 function markDelivered(orderId, idx) {
