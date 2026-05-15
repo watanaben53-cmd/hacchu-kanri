@@ -1106,25 +1106,45 @@ function showDeleteConfirm(id) {
   var existing = document.getElementById('delete-confirm-modal');
   if (existing) existing.remove();
 
-  var modal = document.createElement('div');
-  modal.id = 'delete-confirm-modal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:600;display:flex;align-items:center;justify-content:center;padding:20px';
-  modal.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px 20px;width:100%;max-width:320px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.2)">'
-    + '<div style="font-size:22px;margin-bottom:10px">🗑️</div>'
-    + '<div style="font-size:15px;font-weight:700;margin-bottom:6px;color:var(--text)">発注書を削除しますか？</div>'
-    + '<div style="font-size:12px;color:var(--gray);margin-bottom:20px">この操作は取り消せません</div>'
-    + '<div style="display:flex;gap:10px">'
-    +   '<button id="del-cancel" style="flex:1;padding:11px;border:1.5px solid var(--border);border-radius:8px;background:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">キャンセル</button>'
-    +   '<button id="del-ok" style="flex:1;padding:11px;border:none;border-radius:8px;background:#dc3545;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">削除する</button>'
-    + '</div>'
-    + '</div>';
+  // DOM生成方式（innerHTML後のgetElementById問題を回避）
+  var overlay = document.createElement('div');
+  overlay.id = 'delete-confirm-modal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:600;display:flex;align-items:center;justify-content:center;padding:20px';
 
-  document.body.appendChild(modal);
+  var card = document.createElement('div');
+  card.style.cssText = 'background:#fff;border-radius:16px;padding:24px 20px;width:100%;max-width:320px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.2)';
 
-  document.getElementById('del-cancel').onclick = function() { modal.remove(); };
-  document.getElementById('del-ok').onclick = function() {
-    modal.remove();
+  var icon = document.createElement('div');
+  icon.style.cssText = 'font-size:28px;margin-bottom:10px';
+  icon.textContent = '🗑️';
+
+  var title = document.createElement('div');
+  title.style.cssText = 'font-size:15px;font-weight:700;margin-bottom:6px';
+  title.textContent = '発注書を削除しますか？';
+
+  var sub = document.createElement('div');
+  sub.style.cssText = 'font-size:12px;color:#6b7280;margin-bottom:20px';
+  sub.textContent = 'この操作は取り消せません';
+
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:10px';
+
+  var btnCancel = document.createElement('button');
+  btnCancel.style.cssText = 'flex:1;padding:11px;border:1.5px solid #d8dde6;border-radius:8px;background:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit';
+  btnCancel.textContent = 'キャンセル';
+
+  var btnOk = document.createElement('button');
+  btnOk.style.cssText = 'flex:1;padding:11px;border:none;border-radius:8px;background:#dc3545;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit';
+  btnOk.textContent = '削除する';
+
+  // イベント設定
+  btnCancel.onclick = function(e) { e.stopPropagation(); overlay.remove(); };
+  btnOk.onclick = function(e) {
+    e.stopPropagation();
+    overlay.remove();
+    // 通常発注から削除
     appData.orders = appData.orders.filter(function(o){ return o.id !== id; });
+    // 井上ブラシ発注から削除
     if (appData.inoueOrders) {
       appData.inoueOrders = appData.inoueOrders.filter(function(o){ return o.id !== id; });
     }
@@ -1134,8 +1154,16 @@ function showDeleteConfirm(id) {
     if (typeof updatePendingBadge === 'function') updatePendingBadge();
     showToast('削除しました');
   };
-  // 背景タップで閉じる
-  modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
+  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+  row.appendChild(btnCancel);
+  row.appendChild(btnOk);
+  card.appendChild(icon);
+  card.appendChild(title);
+  card.appendChild(sub);
+  card.appendChild(row);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
 }
 
 // ============================================================
