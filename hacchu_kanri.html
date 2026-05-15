@@ -994,7 +994,7 @@ function renderOrders(filter='', statusFilter='') {
     }).join('');
     list.innerHTML = groupHtml || '<div class="empty"><p>発注書がありません</p></div>';
     list.onclick = function(e) {
-      var btn = e.target.closest('[data-action]');
+      var btn = getActionTarget(e.target);
       if (!btn) return;
       var action = btn.getAttribute('data-action');
       var oid    = btn.getAttribute('data-id');
@@ -1013,7 +1013,7 @@ function renderOrders(filter='', statusFilter='') {
 
   // イベント委譲でボタンクリックを処理
   list.onclick = function(e) {
-    var btn = e.target.closest('[data-action]');
+    var btn = getActionTarget(e.target);
     if (!btn) return;
     var action = btn.getAttribute('data-action');
     var oid    = btn.getAttribute('data-id');
@@ -1085,10 +1085,57 @@ function renderOrderCard(o) {
 }
 function filterOrders(v) { renderOrders(v, document.getElementById('status-filter').value); }
 function filterOrdersByStatus(v) { renderOrders(document.getElementById('order-search').value, v); }
+// closest の代替（iOS Safari対応）
+function getActionTarget(el) {
+  var node = el;
+  var depth = 0;
+  while (node && depth < 5) {
+    if (node.getAttribute && node.getAttribute('data-action')) return node;
+    node = node.parentElement;
+    depth++;
+  }
+  return null;
+}
+
 function deleteOrder(id) {
-  if (!confirm('この発注書を削除しますか？')) return;
-  appData.orders = appData.orders.filter(o => o.id !== id);
-  save(); renderOrders(); updateWaitingBadge();
+  // カスタム確認（confirmのブロック対策）
+  showDeleteConfirm(id);
+}
+
+function showDeleteConfirm(id) {
+  var existing = document.getElementById('delete-confirm-modal');
+  if (existing) existing.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'delete-confirm-modal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:600;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = '<div style="background:#fff;border-radius:16px;padding:24px 20px;width:100%;max-width:320px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.2)">'
+    + '<div style="font-size:22px;margin-bottom:10px">🗑️</div>'
+    + '<div style="font-size:15px;font-weight:700;margin-bottom:6px;color:var(--text)">発注書を削除しますか？</div>'
+    + '<div style="font-size:12px;color:var(--gray);margin-bottom:20px">この操作は取り消せません</div>'
+    + '<div style="display:flex;gap:10px">'
+    +   '<button id="del-cancel" style="flex:1;padding:11px;border:1.5px solid var(--border);border-radius:8px;background:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit">キャンセル</button>'
+    +   '<button id="del-ok" style="flex:1;padding:11px;border:none;border-radius:8px;background:#dc3545;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">削除する</button>'
+    + '</div>'
+    + '</div>';
+
+  document.body.appendChild(modal);
+
+  document.getElementById('del-cancel').onclick = function() { modal.remove(); };
+  document.getElementById('del-ok').onclick = function() {
+    modal.remove();
+    appData.orders = appData.orders.filter(function(o){ return o.id !== id; });
+    if (appData.inoueOrders) {
+      appData.inoueOrders = appData.inoueOrders.filter(function(o){ return o.id !== id; });
+    }
+    save();
+    renderOrders();
+    updateWaitingBadge();
+    if (typeof updatePendingBadge === 'function') updatePendingBadge();
+    showToast('削除しました');
+  };
+  // 背景タップで閉じる
+  modal.onclick = function(e) { if (e.target === modal) modal.remove(); };
 }
 
 // ============================================================
