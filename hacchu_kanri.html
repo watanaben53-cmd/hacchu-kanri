@@ -425,10 +425,15 @@ select.fc{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns=
     <div class="total-area"><span>合計金額（税抜）</span><span class="total-num" id="total-display">¥0</span></div>
   </div>
 
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:22px">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:8px">
     <button class="btn btn-gray btn-full" onclick="saveDraft()">下書き保存</button>
     <button class="btn btn-full" style="background:#d97706;color:#fff;font-weight:600" onclick="savePending()">
       ⏸ 保留にする
+    </button>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:22px">
+    <button class="btn btn-full" style="background:#f8d7da;color:#842029;border:1.5px solid #f5c6cb;font-weight:600" onclick="cancelOrder()">
+      ✕ 取り消し
     </button>
     <button class="btn btn-primary btn-full" onclick="confirmAndPrint()">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
@@ -1412,6 +1417,7 @@ function updateWaitingBadge() {
 // ============================================================
 function initNewOrder() {
   editOrderId = null;
+  window._lastConfirmedOrderId = null;
   renderHankoSelect();
   resetSupplierInput();
   const today = new Date();
@@ -2400,9 +2406,10 @@ function confirmAndPrint() {
   const od = buildOrderData('sent');
   persistOrder(od);
 
-  // 2) 保存した発注書のIDを記録（印刷済みフラグ用）
+  // 2) 保存した発注書のIDを記録（印刷済みフラグ・取り消し用）
   const savedOrder = appData.orders[appData.orders.length - 1];
   window._currentPrintOrderId = savedOrder ? savedOrder.id : null;
+  window._lastConfirmedOrderId = savedOrder ? savedOrder.id : null;
 
   // 3) PDFを表示（保存したodのデータで描画）
   buildPDFHTML(od.date, od.no, od.supplier, od.note, od.taxType, od.items, appData.selectedHanko);
@@ -2425,10 +2432,11 @@ function closePDFAndReset() {
   if (window._needNewOrderReset) {
     window._needNewOrderReset = false;
     editOrderId = null;
-    // initNewOrderを呼ぶ前にページ遷移フラグを設定
     returningFromCatSearch = false;
     initNewOrder();
   }
+  // 発注一覧へ遷移したら取り消し不可（IDをクリア）
+  window._lastConfirmedOrderId = null;
 
   // 発注一覧へ直接遷移
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -2792,6 +2800,110 @@ function renderCalendar() {
     nextBlank.appendChild(nextDayDiv);
     grid.appendChild(nextBlank);
   }
+}
+
+// ============================================================
+// 取り消し
+// ============================================================
+function cancelOrder() {
+  // 発注確定後（PDF閉じた後）かどうかで動作を変える
+  var lastSavedId = window._lastConfirmedOrderId || null;
+
+  if (lastSavedId) {
+    // 発注確定済みの場合：確認してから削除
+    showCancelConfirm(lastSavedId);
+  } else if (currentItems.length > 0 || document.getElementById('order-supplier').value) {
+    // 未確定で入力中の場合：リセットのみ
+    showCancelConfirm(null);
+  } else {
+    showToast('取り消す内容がありません');
+  }
+}
+
+function showCancelConfirm(savedOrderId) {
+  var isConfirmed = !!savedOrderId;
+  var msg = isConfirmed
+    ? '発注確定した内容を取り消しますか？'
+    : '入力中の内容をリセットしますか？';
+
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:600;display:flex;align-items:center;justify-content:center;padding:20px';
+
+  var card = document.createElement('div');
+  card.style.cssText = 'background:#fff;border-radius:16px;padding:24px 20px;width:100%;max-width:340px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,.2)';
+
+  var icon = document.createElement('div');
+  icon.style.cssText = 'font-size:28px;margin-bottom:10px';
+  icon.textContent = '↩️';
+
+  var title = document.createElement('div');
+  title.style.cssText = 'font-size:15px;font-weight:700;margin-bottom:8px';
+  title.textContent = isConfirmed ? '発注確定を取り消しますか？' : '入力内容をリセットしますか？';
+
+  var desc = document.createElement('div');
+  desc.style.cssText = 'font-size:12px;color:#6b7280;margin-bottom:20px;line-height:1.6';
+  desc.textContent = isConfirmed
+    ? '発注一覧から削除され、発注Noが1つ戻ります。'
+    : '入力した内容がすべてリセットされます。';
+
+  var row = document.createElement('div');
+  row.style.cssText = 'display:flex;gap:10px';
+
+  var btnCancel = document.createElement('button');
+  btnCancel.style.cssText = 'flex:1;padding:11px;border:1.5px solid #d8dde6;border-radius:8px;background:#fff;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit';
+  btnCancel.textContent = 'キャンセル';
+
+  var btnOk = document.createElement('button');
+  btnOk.style.cssText = 'flex:1;padding:11px;border:none;border-radius:8px;background:#dc3545;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit';
+  btnOk.textContent = isConfirmed ? '取り消す' : 'リセット';
+
+  btnCancel.onclick = function(e) { e.stopPropagation(); overlay.remove(); };
+  btnOk.onclick = function(e) {
+    e.stopPropagation();
+    overlay.remove();
+
+    if (isConfirmed && savedOrderId) {
+      // 発注一覧から削除
+      var prevLen = appData.orders.length;
+      appData.orders = appData.orders.filter(function(o){ return o.id !== savedOrderId; });
+      // 削除できた場合はseqを1戻す
+      if (appData.orders.length < prevLen) {
+        appData.orderSeq = Math.max(1, (appData.orderSeq || 1) - 1);
+      }
+      save();
+      renderOrders();
+      updateWaitingBadge();
+    }
+
+    // 入力をリセット
+    window._lastConfirmedOrderId = null;
+    window._needNewOrderReset = false;
+    editOrderId = null;
+    initNewOrder();
+
+    // 新規発注画面に留まる
+    document.querySelectorAll('.page').forEach(function(p){ p.classList.remove('active'); });
+    document.getElementById('page-new-order').classList.add('active');
+    var navIds = ['orders','new-order','pending','waiting','calendar','products','suppliers','inoue','inoue-record'];
+    navIds.forEach(function(id) {
+      var btn = document.getElementById('nav-' + id);
+      if (btn) btn.classList.toggle('active', id === 'new-order');
+    });
+    document.getElementById('hdr-title').textContent = '新規発注書作成';
+
+    showToast(isConfirmed ? '取り消しました。発注Noを戻しました' : '入力をリセットしました');
+  };
+
+  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+
+  row.appendChild(btnCancel);
+  row.appendChild(btnOk);
+  card.appendChild(icon);
+  card.appendChild(title);
+  card.appendChild(desc);
+  card.appendChild(row);
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
 }
 
 // ============================================================
